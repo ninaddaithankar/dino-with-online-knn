@@ -1,0 +1,7 @@
+__pycache__
+*.pyc
+/.github
+
+/output
+/logs
+/wandb

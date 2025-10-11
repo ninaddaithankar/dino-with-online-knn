@@ -70,7 +70,7 @@ class Solarization(object):
 
 def load_pretrained_weights(model, pretrained_weights, checkpoint_key, model_name, patch_size):
     if os.path.isfile(pretrained_weights):
-        state_dict = torch.load(pretrained_weights, map_location="cpu")
+        state_dict = torch.load(pretrained_weights, map_location="cpu", weights_only=False)
         if checkpoint_key is not None and checkpoint_key in state_dict:
             print(f"Take key {checkpoint_key} in provided checkpoint dict")
             state_dict = state_dict[checkpoint_key]
@@ -184,10 +184,10 @@ def restart_from_checkpoint(ckp_path, run_variables=None, **kwargs):
                 run_variables[var_name] = checkpoint[var_name]
 
 
-def cosine_scheduler(base_value, final_value, epochs, niter_per_ep, warmup_epochs=0, start_warmup_value=0):
+def cosine_scheduler(base_value, final_value, epochs, niter_per_ep, warmup_epochs=0, warmup_steps=-1, start_warmup_value=0):
     warmup_schedule = np.array([])
-    warmup_iters = warmup_epochs * niter_per_ep
-    if warmup_epochs > 0:
+    warmup_iters = warmup_steps if warmup_steps > -1 else warmup_epochs * niter_per_ep
+    if warmup_iters > 0:
         warmup_schedule = np.linspace(start_warmup_value, base_value, warmup_iters)
 
     iters = np.arange(epochs * niter_per_ep - warmup_iters)

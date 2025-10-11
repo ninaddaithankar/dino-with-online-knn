@@ -19,6 +19,7 @@ import time
 import math
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 from PIL import Image
@@ -29,7 +30,10 @@ import torch.backends.cudnn as cudnn
 import torch.nn.functional as F
 from torchvision import datasets, transforms
 from torchvision import models as torchvision_models
+import wandb
 
+from data.something_dataloader import SomethingDataset
+from eval_knn import evaluate_knn, get_args
 import utils
 import vision_transformer as vits
 from vision_transformer import DINOHead
@@ -87,9 +91,9 @@ def get_args_parser():
     parser.add_argument('--clip_grad', type=float, default=3.0, help="""Maximal parameter
         gradient norm if using gradient clipping. Clipping with norm .3 ~ 1.0 can
         help optimization for larger ViT architectures. 0 for disabling.""")
-    parser.add_argument('--batch_size_per_gpu', default=64, type=int,
+    parser.add_argument('--batch_size_per_gpu', default=16, type=int,
         help='Per-GPU batch-size : number of distinct images loaded on one GPU.')
-    parser.add_argument('--epochs', default=100, type=int, help='Number of epochs of training.')
+    parser.add_argument('--epochs', default=10, type=int, help='Number of epochs of training.')
     parser.add_argument('--freeze_last_layer', default=1, type=int, help="""Number of epochs
         during which we keep the output layer fixed. Typically doing so during
         the first epoch helps training. Try increasing this value if the loss does not decrease.""")
@@ -98,6 +102,8 @@ def get_args_parser():
         with the batch size, and specified here for a reference batch size of 256.""")
     parser.add_argument("--warmup_epochs", default=10, type=int,
         help="Number of epochs for the linear learning-rate warm up.")
+    parser.add_argument("--warmup_steps", default=10000, type=int,
+        help="Number of steps for the linear learning-rate warm up.")
     parser.add_argument('--min_lr', type=float, default=1e-6, help="""Target LR at the
         end of optimization. We use a cosine LR schedule with linear warmup.""")
     parser.add_argument('--optimizer', default='adamw', type=str,
@@ -120,17 +126,29 @@ def get_args_parser():
     parser.add_argument('--data_path', default='/path/to/imagenet/train/', type=str,
         help='Please specify path to the ImageNet training data.')
     parser.add_argument('--output_dir', default=".", type=str, help='Path to save logs and checkpoints.')
-    parser.add_argument('--saveckp_freq', default=20, type=int, help='Save checkpoint every x epochs.')
+    parser.add_argument('--saveckp_freq', default=1, type=int, help='Save checkpoint every x epochs.')
     parser.add_argument('--seed', default=0, type=int, help='Random seed.')
-    parser.add_argument('--num_workers', default=10, type=int, help='Number of data loading workers per GPU.')
+    parser.add_argument('--num_workers', default=6, type=int, help='Number of data loading workers per GPU.')
     parser.add_argument("--dist_url", default="env://", type=str, help="""url used to set up
         distributed training; see https://pytorch.org/docs/stable/distributed.html""")
-    parser.add_argument("--local_rank", default=0, type=int, help="Please ignore and do not set this argument.")
+    parser.add_argument("--local-rank", default=0, type=int, help="Please ignore and do not set this argument.")
+
+    parser.add_argument("--context_length", default=16, type=int, help="Number of frames in the input clip.")
+    parser.add_argument("--temporal_diff", default=0.25, type=float, help="Time difference between sampled frames in seconds.")
+
+    parser.add_argument("--run_name", required=True, type=str, help="Name of run on wandb.")
+
     return parser
 
 
 def train_dino(args):
     utils.init_distributed_mode(args)
+
+    # init wandb
+    if utils.is_main_process():
+        wandb.init(project="dino_recipe", name=args.run_name, config=vars(args))
+
+
     utils.fix_random_seeds(args.seed)
     print("git:\n  {}\n".format(utils.get_sha()))
     print("\n".join("%s: %s" % (k, str(v)) for k, v in sorted(dict(vars(args)).items())))
@@ -142,7 +160,24 @@ def train_dino(args):
         args.local_crops_scale,
         args.local_crops_number,
     )
-    dataset = datasets.ImageFolder(args.data_path, transform=transform)
+
+    hparams = SimpleNamespace(**{
+        "dataset_dir": args.data_path,
+        "context_length": args.context_length,
+        "time_between_frames": args.temporal_diff,
+        "sampling_rate": 0.0,
+        "preencode_dataset": False,
+        "use_preencoded_dataset": False,
+        "debug_mode": False,
+        "model_name": "linear_probe",
+        "preprocess_data": False,
+        "crop_all_samples": False,
+        "use_raw_framerate": False,
+    })
+
+    # dataset = datasets.ImageFolder(args.data_path, transform=transform)
+    dataset = SomethingDataset(hparams, "train", transform)
+
     sampler = torch.utils.data.DistributedSampler(dataset, shuffle=True)
     data_loader = torch.utils.data.DataLoader(
         dataset,
@@ -240,6 +275,7 @@ def train_dino(args):
         args.min_lr,
         args.epochs, len(data_loader),
         warmup_epochs=args.warmup_epochs,
+        warmup_steps=args.warmup_steps,
     )
     wd_schedule = utils.cosine_scheduler(
         args.weight_decay,
@@ -252,27 +288,40 @@ def train_dino(args):
     print(f"Loss, optimizer and schedulers ready.")
 
     # ============ optionally resume training ... ============
-    to_restore = {"epoch": 0}
-    utils.restart_from_checkpoint(
-        os.path.join(args.output_dir, "checkpoint.pth"),
-        run_variables=to_restore,
-        student=student,
-        teacher=teacher,
-        optimizer=optimizer,
-        fp16_scaler=fp16_scaler,
-        dino_loss=dino_loss,
-    )
-    start_epoch = to_restore["epoch"]
+    start_epoch = 0
+    # to_restore = {"epoch": 0}
+    # utils.restart_from_checkpoint(
+    #     os.path.join(args.output_dir, "checkpoint.pth"),
+    #     run_variables=to_restore,
+    #     student=student,
+    #     teacher=teacher,
+    #     optimizer=optimizer,
+    #     fp16_scaler=fp16_scaler,
+    #     dino_loss=dino_loss,
+    # )
+    # start_epoch = to_restore["epoch"]
 
     start_time = time.time()
     print("Starting DINO training !")
     for epoch in range(start_epoch, args.epochs):
         data_loader.sampler.set_epoch(epoch)
 
+        evaluate_knn(get_args(defaults=True), teacher_without_ddp)    
+
         # ============ training one epoch of DINO ... ============
         train_stats = train_one_epoch(student, teacher, teacher_without_ddp, dino_loss,
             data_loader, optimizer, lr_schedule, wd_schedule, momentum_schedule,
             epoch, fp16_scaler, args)
+        
+        # ============ logging ... ============
+        if utils.is_main_process():
+            # log scalar metrics
+            wandb.log({f"train/{k}_epoch": v for k, v in train_stats.items()})
+
+            # results = evaluate_knn(get_args(default=True), teacher_without_ddp)
+            # for k, v in results.items():
+            #     wandb.log({f"eval/{k}_epoch": v[0]})
+            #     wandb.log({f"eval/{k}_top5_epoch": v[1]})
 
         # ============ writing logs ... ============
         save_dict = {
@@ -297,6 +346,10 @@ def train_dino(args):
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {}'.format(total_time_str))
 
+    if utils.is_main_process():
+        wandb.finish()
+
+
 
 def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loader,
                     optimizer, lr_schedule, wd_schedule, momentum_schedule,epoch,
@@ -311,8 +364,12 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
             if i == 0:  # only the first group is regularized
                 param_group["weight_decay"] = wd_schedule[it]
 
-        # move images to gpu
-        images = [im.cuda(non_blocking=True) for im in images]
+        # debug input images
+        # print(f"len of input: {len(images)} input image shape: {images[0].shape}")
+
+        # flatten and move images to gpu
+        images = [im.flatten(0, 1).cuda(non_blocking=True) for im in images]
+
         # teacher and student forward passes + compute dino loss
         with torch.cuda.amp.autocast(fp16_scaler is not None):
             teacher_output = teacher(images[:2])  # only the 2 global views pass through the teacher
@@ -354,6 +411,19 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
         metric_logger.update(loss=loss.item())
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
         metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
+        
+        if utils.is_main_process():
+            wandb.log(
+                {
+                    "train/loss": loss.item(), 
+                    "train/epoch": epoch,
+                    "train/lr": optimizer.param_groups[0]["lr"],
+                    "train/wd": optimizer.param_groups[0]["weight_decay"],
+                    "train/momentum": momentum_schedule[it],
+                    "train/global_step": it,
+                }
+            )
+
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)

@@ -22,12 +22,14 @@ import torch.backends.cudnn as cudnn
 from torchvision import datasets
 from torchvision import transforms as pth_transforms
 from torchvision import models as torchvision_models
+import wandb
 
+from data.imagenet_dataloader import ImageNetDataset
 import utils
 import vision_transformer as vits
 
 
-def extract_feature_pipeline(args):
+def extract_feature_pipeline(args, encoder=None):
     # ============ preparing data ... ============
     transform = pth_transforms.Compose([
         pth_transforms.Resize(256, interpolation=3),
@@ -35,9 +37,11 @@ def extract_feature_pipeline(args):
         pth_transforms.ToTensor(),
         pth_transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
     ])
-    dataset_train = ReturnIndexDataset(os.path.join(args.data_path, "train"), transform=transform)
-    dataset_val = ReturnIndexDataset(os.path.join(args.data_path, "val"), transform=transform)
+    dataset_train = ReturnIndexDataset('train', transform, dataset_dir=args.data_path, n_samples_per_class=75)
+    dataset_val = ReturnIndexDataset('val', transform, dataset_dir=args.data_path, n_samples_per_class=25)
+
     sampler = torch.utils.data.DistributedSampler(dataset_train, shuffle=False)
+
     data_loader_train = torch.utils.data.DataLoader(
         dataset_train,
         sampler=sampler,
@@ -56,19 +60,23 @@ def extract_feature_pipeline(args):
     print(f"Data loaded with {len(dataset_train)} train and {len(dataset_val)} val imgs.")
 
     # ============ building network ... ============
-    if "vit" in args.arch:
-        model = vits.__dict__[args.arch](patch_size=args.patch_size, num_classes=0)
-        print(f"Model {args.arch} {args.patch_size}x{args.patch_size} built.")
-    elif "xcit" in args.arch:
-        model = torch.hub.load('facebookresearch/xcit:main', args.arch, num_classes=0)
-    elif args.arch in torchvision_models.__dict__.keys():
-        model = torchvision_models.__dict__[args.arch](num_classes=0)
-        model.fc = nn.Identity()
+    if encoder is not None:
+        model = encoder
     else:
-        print(f"Architecture {args.arch} non supported")
-        sys.exit(1)
+        if "vit" in args.arch:
+            model = vits.__dict__[args.arch](patch_size=args.patch_size, num_classes=0)
+            print(f"Model {args.arch} {args.patch_size}x{args.patch_size} built.")
+        elif "xcit" in args.arch:
+            model = torch.hub.load('facebookresearch/xcit:main', args.arch, num_classes=0)
+        elif args.arch in torchvision_models.__dict__.keys():
+            model = torchvision_models.__dict__[args.arch](num_classes=0)
+            model.fc = nn.Identity()
+        else:
+            print(f"Architecture {args.arch} non supported")
+            sys.exit(1)
+        utils.load_pretrained_weights(model, args.pretrained_weights, args.checkpoint_key, args.arch, args.patch_size)
+    
     model.cuda()
-    utils.load_pretrained_weights(model, args.pretrained_weights, args.checkpoint_key, args.arch, args.patch_size)
     model.eval()
 
     # ============ extract features ... ============
@@ -81,8 +89,14 @@ def extract_feature_pipeline(args):
         train_features = nn.functional.normalize(train_features, dim=1, p=2)
         test_features = nn.functional.normalize(test_features, dim=1, p=2)
 
-    train_labels = torch.tensor([s[-1] for s in dataset_train.samples]).long()
-    test_labels = torch.tensor([s[-1] for s in dataset_val.samples]).long()
+        # works with both ImageFolder-like and HuggingFace datasets
+    if hasattr(dataset_train, "samples"):
+        train_labels = torch.tensor([s[-1] for s in dataset_train.samples]).long()
+        test_labels = torch.tensor([s[-1] for s in dataset_val.samples]).long()
+    else:
+        train_labels = torch.tensor(dataset_train.ds["label"]).long()
+        test_labels = torch.tensor(dataset_val.ds["label"]).long()
+
     # save features and labels
     if args.dump_features and dist.get_rank() == 0:
         torch.save(train_features.cpu(), os.path.join(args.dump_features, "trainfeat.pth"))
@@ -182,38 +196,16 @@ def knn_classifier(train_features, train_labels, test_features, test_labels, k, 
     return top1, top5
 
 
-class ReturnIndexDataset(datasets.ImageFolder):
+class ReturnIndexDataset(ImageNetDataset):
     def __getitem__(self, idx):
         img, lab = super(ReturnIndexDataset, self).__getitem__(idx)
         return img, idx
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser('Evaluation with weighted k-NN on ImageNet')
-    parser.add_argument('--batch_size_per_gpu', default=128, type=int, help='Per-GPU batch-size')
-    parser.add_argument('--nb_knn', default=[10, 20, 100, 200], nargs='+', type=int,
-        help='Number of NN to use. 20 is usually working the best.')
-    parser.add_argument('--temperature', default=0.07, type=float,
-        help='Temperature used in the voting coefficient')
-    parser.add_argument('--pretrained_weights', default='', type=str, help="Path to pretrained weights to evaluate.")
-    parser.add_argument('--use_cuda', default=True, type=utils.bool_flag,
-        help="Should we store the features on GPU? We recommend setting this to False if you encounter OOM")
-    parser.add_argument('--arch', default='vit_small', type=str, help='Architecture')
-    parser.add_argument('--patch_size', default=16, type=int, help='Patch resolution of the model.')
-    parser.add_argument("--checkpoint_key", default="teacher", type=str,
-        help='Key to use in the checkpoint (example: "teacher")')
-    parser.add_argument('--dump_features', default=None,
-        help='Path where to save computed features, empty for no saving')
-    parser.add_argument('--load_features', default=None, help="""If the features have
-        already been computed, where to find them.""")
-    parser.add_argument('--num_workers', default=10, type=int, help='Number of data loading workers per GPU.')
-    parser.add_argument("--dist_url", default="env://", type=str, help="""url used to set up
-        distributed training; see https://pytorch.org/docs/stable/distributed.html""")
-    parser.add_argument("--local_rank", default=0, type=int, help="Please ignore and do not set this argument.")
-    parser.add_argument('--data_path', default='/path/to/imagenet/', type=str)
-    args = parser.parse_args()
+def evaluate_knn(args, encoder=None):
+    if not dist.is_initialized():
+        utils.init_distributed_mode(args)
 
-    utils.init_distributed_mode(args)
     print("git:\n  {}\n".format(utils.get_sha()))
     print("\n".join("%s: %s" % (k, str(v)) for k, v in sorted(dict(vars(args)).items())))
     cudnn.benchmark = True
@@ -225,7 +217,7 @@ if __name__ == '__main__':
         test_labels = torch.load(os.path.join(args.load_features, "testlabels.pth"))
     else:
         # need to extract features !
-        train_features, test_features, train_labels, test_labels = extract_feature_pipeline(args)
+        train_features, test_features, train_labels, test_labels = extract_feature_pipeline(args, encoder)
 
     if utils.get_rank() == 0:
         if args.use_cuda:
@@ -233,10 +225,56 @@ if __name__ == '__main__':
             test_features = test_features.cuda()
             train_labels = train_labels.cuda()
             test_labels = test_labels.cuda()
-
         print("Features are ready!\nStart the k-NN classification.")
+    
+        knn_results = {}
         for k in args.nb_knn:
             top1, top5 = knn_classifier(train_features, train_labels,
                 test_features, test_labels, k, args.temperature)
             print(f"{k}-NN classifier result: Top1: {top1}, Top5: {top5}")
-    dist.barrier()
+            knn_results[k] = (top1, top5)
+        
+        for k, v in knn_results.items():
+            wandb.log({f"eval/knn_{k}_top1": v[0]})
+            wandb.log({f"eval/knn_{k}_top5": v[1]})
+
+    if dist.is_initialized():
+        dist.barrier()
+
+
+def get_args(defaults=False):
+    parser = argparse.ArgumentParser('Evaluation with weighted k-NN on ImageNet')
+    parser.add_argument('--batch_size_per_gpu', default=32, type=int, help='Per-GPU batch-size')
+    parser.add_argument('--nb_knn', default=[10, 20], nargs='+', type=int,
+        help='Number of NN to use. 20 is usually working the best.')
+    parser.add_argument('--temperature', default=0.07, type=float,
+        help='Temperature used in the voting coefficient')
+    parser.add_argument('--pretrained_weights', default='', type=str, help="Path to pretrained weights to evaluate.")
+    parser.add_argument('--use_cuda', default=True, type=utils.bool_flag,
+        help="Should we store the features on GPU? We recommend setting this to False if you encounter OOM")
+    parser.add_argument('--arch', default='vit_base', type=str, help='Architecture')
+    parser.add_argument('--patch_size', default=16, type=int, help='Patch resolution of the model.')
+    parser.add_argument("--checkpoint_key", default="teacher", type=str,
+        help='Key to use in the checkpoint (example: "teacher")')
+    parser.add_argument('--dump_features', default=None,
+        help='Path where to save computed features, empty for no saving')
+    parser.add_argument('--load_features', default=None, help="""If the features have
+        already been computed, where to find them.""")
+    parser.add_argument('--num_workers', default=10, type=int, help='Number of data loading workers per GPU.')
+    parser.add_argument("--dist_url", default="env://", type=str, help="""url used to set up
+        distributed training; see https://pytorch.org/docs/stable/distributed.html""")
+    parser.add_argument("--local-rank", default=0, type=int, help="Please ignore and do not set this argument.")
+    parser.add_argument('--data_path', default='/work/hdd/bcsi/ndaithankar/datasets/imagenet-1k-hf', type=str)
+    
+    if defaults:
+        args = parser.parse_args(args=[])
+    else:
+        args = parser.parse_args()
+
+    return args
+
+
+if __name__ == '__main__':
+    args = get_args()
+    evaluate_knn(args)
+    
