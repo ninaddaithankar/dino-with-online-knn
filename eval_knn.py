@@ -241,6 +241,8 @@ def evaluate_knn(args, encoder=None):
     if dist.is_initialized():
         dist.barrier()
 
+    torch.cuda.empty_cache()
+
 
 def get_args(defaults=False):
     parser = argparse.ArgumentParser('Evaluation with weighted k-NN on ImageNet')

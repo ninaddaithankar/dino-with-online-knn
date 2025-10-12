@@ -32,6 +32,7 @@ from torchvision import datasets, transforms
 from torchvision import models as torchvision_models
 import wandb
 
+# from data.ego4d_dataloader import Ego4DTasksDataset
 from data.something_dataloader import SomethingDataset
 from eval_knn import evaluate_knn, get_args
 import utils
@@ -91,7 +92,7 @@ def get_args_parser():
     parser.add_argument('--clip_grad', type=float, default=3.0, help="""Maximal parameter
         gradient norm if using gradient clipping. Clipping with norm .3 ~ 1.0 can
         help optimization for larger ViT architectures. 0 for disabling.""")
-    parser.add_argument('--batch_size_per_gpu', default=16, type=int,
+    parser.add_argument('--batch_size_per_gpu', default=8, type=int,
         help='Per-GPU batch-size : number of distinct images loaded on one GPU.')
     parser.add_argument('--epochs', default=10, type=int, help='Number of epochs of training.')
     parser.add_argument('--freeze_last_layer', default=1, type=int, help="""Number of epochs
@@ -148,7 +149,6 @@ def train_dino(args):
     if utils.is_main_process():
         wandb.init(project="dino_recipe", name=args.run_name, config=vars(args))
 
-
     utils.fix_random_seeds(args.seed)
     print("git:\n  {}\n".format(utils.get_sha()))
     print("\n".join("%s: %s" % (k, str(v)) for k, v in sorted(dict(vars(args)).items())))
@@ -176,6 +176,7 @@ def train_dino(args):
     })
 
     # dataset = datasets.ImageFolder(args.data_path, transform=transform)
+    # dataset = Ego4DTasksDataset(hparams, "train", transform=transform, task="moments")
     dataset = SomethingDataset(hparams, "train", transform)
 
     sampler = torch.utils.data.DistributedSampler(dataset, shuffle=True)
