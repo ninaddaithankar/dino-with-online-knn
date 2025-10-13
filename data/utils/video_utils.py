@@ -161,4 +161,8 @@ def read_selected_frames(video_path, container, stream, frame_indices, transform
         print(len(frames_out), len(frame_indices))
         raise RuntimeError(f"No frames read from {video_path}. Check frame indices: {frame_indices}")
 
+    if transform:
+        frames_out = [torch.stack(same_crops) for same_crops in zip(*frames_out)]
+        return frames_out
+
     return torch.stack(frames_out)

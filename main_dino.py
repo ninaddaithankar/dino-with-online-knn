@@ -32,7 +32,7 @@ from torchvision import datasets, transforms
 from torchvision import models as torchvision_models
 import wandb
 
-# from data.ego4d_dataloader import Ego4DTasksDataset
+from data.ego4d_dataloader import Ego4DTasksDataset
 from data.something_dataloader import SomethingDataset
 from eval_knn import evaluate_knn, get_args
 import utils
@@ -173,11 +173,20 @@ def train_dino(args):
         "preprocess_data": False,
         "crop_all_samples": False,
         "use_raw_framerate": False,
+        "use_preprocessed_ego4d": True,
     })
 
+    data_paths = [p.strip() for p in args.data_path.split(',')]
+
     # dataset = datasets.ImageFolder(args.data_path, transform=transform)
-    # dataset = Ego4DTasksDataset(hparams, "train", transform=transform, task="moments")
-    dataset = SomethingDataset(hparams, "train", transform)
+    ego4d = Ego4DTasksDataset(hparams, "train", dataset_dir=data_paths[0], transform=transform, task="moments")
+    print(f"Loaded Ego4D with {len(ego4d)} clips.")
+
+    ssv2 = SomethingDataset(hparams, "train", dataset_dir=data_paths[1], transform=transform)
+    print(f"Loaded SSv2 with {len(ssv2)} clips.")
+    
+    dataset = torch.utils.data.ConcatDataset([ego4d, ssv2])
+    print(f"Total aggregate dataset has {len(dataset)} clips.")
 
     sampler = torch.utils.data.DistributedSampler(dataset, shuffle=True)
     data_loader = torch.utils.data.DataLoader(

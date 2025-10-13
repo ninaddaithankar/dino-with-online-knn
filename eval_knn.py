@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
+import gc
 import sys
 import argparse
+
 
 import torch
 from torch import nn
@@ -241,6 +243,15 @@ def evaluate_knn(args, encoder=None):
     if dist.is_initialized():
         dist.barrier()
 
+    del train_features
+    del test_features
+    del train_labels
+    del test_labels
+
+    # --- Force Python garbage collection ---
+    gc.collect()
+
+    # --- Clear PyTorch CUDA cache ---
     torch.cuda.empty_cache()
 
 

@@ -12,7 +12,7 @@ class ImageNetDataset(Dataset):
     def __init__(self, split, transform, dataset_dir=None, n_samples_per_class=None):
         self.transform = transform
         split = 'validation' if split in ["valid", "val", "validate"] else split
-        self.ds = load_dataset("imagenet-1k", cache_dir = dataset_dir, split=split, trust_remote_code=True)
+        self.ds = load_dataset("imagenet-1k", split=split)
 
         # -- select n samples per class to reduce dataset size as needed
         if n_samples_per_class is not None:
