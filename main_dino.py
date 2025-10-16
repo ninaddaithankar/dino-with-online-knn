@@ -94,6 +94,8 @@ def get_args_parser():
         help optimization for larger ViT architectures. 0 for disabling.""")
     parser.add_argument('--batch_size_per_gpu', default=8, type=int,
         help='Per-GPU batch-size : number of distinct images loaded on one GPU.')
+    parser.add_argument('--acc_grad_steps', default=1, type=int,
+        help='Number of gradient accumulation steps.')
     parser.add_argument('--epochs', default=10, type=int, help='Number of epochs of training.')
     parser.add_argument('--freeze_last_layer', default=1, type=int, help="""Number of epochs
         during which we keep the output layer fixed. Typically doing so during
@@ -304,6 +306,8 @@ def train_dino(args):
     # ============ optionally resume training ... ============
     start_epoch = 0
     knn_freq = args.knn_freq if hasattr(args, 'knn_freq') else 1
+    acc_grad_steps = args.acc_grad_steps
+
     # to_restore = {"epoch": 0}
     # utils.restart_from_checkpoint(
     #     os.path.join(args.output_dir, "checkpoint.pth"),
@@ -324,7 +328,7 @@ def train_dino(args):
         # ============ training one epoch of DINO ... ============
         train_stats = train_one_epoch(student, teacher, teacher_without_ddp, dino_loss,
             data_loader, optimizer, lr_schedule, wd_schedule, momentum_schedule,
-            epoch, fp16_scaler, args)
+            epoch, fp16_scaler, acc_grad_steps, args)
         
         # ============ logging ... ============
         if utils.is_main_process():
@@ -370,19 +374,20 @@ def train_dino(args):
 
 def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loader,
                     optimizer, lr_schedule, wd_schedule, momentum_schedule,epoch,
-                    fp16_scaler, args):
+                    fp16_scaler, acc_grad_steps, args):
+    
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Epoch: [{}/{}]'.format(epoch, args.epochs)
+    
     for it, (images, _) in enumerate(metric_logger.log_every(data_loader, 10, header)):
         # update weight decay and learning rate according to their schedule
         it = len(data_loader) * epoch + it  # global training iteration
-        for i, param_group in enumerate(optimizer.param_groups):
-            param_group["lr"] = lr_schedule[it]
-            if i == 0:  # only the first group is regularized
-                param_group["weight_decay"] = wd_schedule[it]
 
-        # debug input images
-        # print(f"len of input: {len(images)} input image shape: {images[0].shape}")
+        if (it + 1) % acc_grad_steps == 0:
+            for i, param_group in enumerate(optimizer.param_groups):
+                param_group["lr"] = lr_schedule[it]
+                if i == 0:  # only the first group is regularized
+                    param_group["weight_decay"] = wd_schedule[it]
 
         # flatten and move images to gpu
         images = [im.flatten(0, 1).cuda(non_blocking=True) for im in images]
@@ -393,12 +398,14 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
             student_output = student(images)
             loss = dino_loss(student_output, teacher_output, epoch)
 
+            if acc_grad_steps > 1:
+                loss = loss / acc_grad_steps
+
         if not math.isfinite(loss.item()):
             print("Loss is {}, stopping training".format(loss.item()), force=True)
             sys.exit(1)
 
         # student update
-        optimizer.zero_grad()
         param_norms = None
         if fp16_scaler is None:
             loss.backward()
@@ -406,7 +413,6 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
                 param_norms = utils.clip_gradients(student, args.clip_grad)
             utils.cancel_gradients_last_layer(epoch, student,
                                               args.freeze_last_layer)
-            optimizer.step()
         else:
             fp16_scaler.scale(loss).backward()
             if args.clip_grad:
@@ -414,14 +420,23 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
                 param_norms = utils.clip_gradients(student, args.clip_grad)
             utils.cancel_gradients_last_layer(epoch, student,
                                               args.freeze_last_layer)
-            fp16_scaler.step(optimizer)
-            fp16_scaler.update()
+
+        # update gradients according to gradient accumulation schedule
+        if (it + 1) % acc_grad_steps == 0:
+            if fp16_scaler is None:
+                optimizer.step()
+            else:
+                fp16_scaler.step(optimizer)
+                fp16_scaler.update()
+        
+            optimizer.zero_grad()
 
         # EMA update for the teacher
-        with torch.no_grad():
-            m = momentum_schedule[it]  # momentum parameter
-            for param_q, param_k in zip(student.module.parameters(), teacher_without_ddp.parameters()):
-                param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
+        if (it + 1) % acc_grad_steps == 0:
+            with torch.no_grad():
+                m = momentum_schedule[it]  # momentum parameter
+                for param_q, param_k in zip(student.module.parameters(), teacher_without_ddp.parameters()):
+                    param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
 
         # logging
         torch.cuda.synchronize()

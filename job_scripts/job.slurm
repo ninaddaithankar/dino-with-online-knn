@@ -30,7 +30,7 @@ torchrun --nproc_per_node=2 main_dino.py \
 --arch vit_base \
 --batch_size_per_gpu 8 \
 --epochs 100 \
---knn_freq 7 \
+--knn_freq 1 \
 --out_dim ${k[${SLURM_ARRAY_TASK_ID}]} \
 --data_path "/work/hdd/beex/ndaithankar/datasets/ego4d/moment_clips, /work/hdd/bcsi/ndaithankar/datasets/ssv2"  \
 --output_dir /work/hdd/bcsi/ndaithankar/playground/dino/output \
