@@ -307,6 +307,10 @@ def train_dino(args):
     start_epoch = 0
     knn_freq = args.knn_freq if hasattr(args, 'knn_freq') else 1
     acc_grad_steps = args.acc_grad_steps
+    
+    output_dir = os.path.join(args.output_dir, args.run_name)
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    args.output_dir = output_dir
 
     # to_restore = {"epoch": 0}
     # utils.restart_from_checkpoint(
