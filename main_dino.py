@@ -125,7 +125,7 @@ def get_args_parser():
 
     # Misc
     parser.add_argument('--data_path', default='/path/to/imagenet/train/', type=str,
-        help='Please specify path to the ImageNet training data.')
+        help='Please specify path to the training data.')
     parser.add_argument('--output_dir', default=".", type=str, help='Path to save logs and checkpoints.')
     parser.add_argument('--saveckp_freq', default=1, type=int, help='Save checkpoint every x epochs.')
     parser.add_argument('--seed', default=0, type=int, help='Random seed.')
@@ -136,7 +136,7 @@ def get_args_parser():
 
     parser.add_argument("--context_length", default=16, type=int, help="Number of frames in the input clip.")
     parser.add_argument("--temporal_diff", default=0.25, type=float, help="Time difference between sampled frames in seconds.")
-
+    parser.add_argument("--knn_freq", default=1, type=int, help="run knn evaluation every n epochs.")
     parser.add_argument("--run_name", required=True, type=str, help="Name of run on wandb.")
 
     return parser
@@ -178,14 +178,18 @@ def train_dino(args):
 
     data_paths = [p.strip() for p in args.data_path.split(',')]
 
+    datasets = []
+
     # dataset = datasets.ImageFolder(args.data_path, transform=transform)
     ego4d = Ego4DTasksDataset(hparams, "train", dataset_dir=data_paths[0], transform=transform, task="moments")
     print(f"Loaded Ego4D with {len(ego4d)} clips.")
+    datasets.append(ego4d)
 
     ssv2 = SomethingDataset(hparams, "train", dataset_dir=data_paths[1], transform=transform)
     print(f"Loaded SSv2 with {len(ssv2)} clips.")
+    datasets.append(ssv2)
     
-    dataset = torch.utils.data.ConcatDataset([ego4d, ssv2])
+    dataset = torch.utils.data.ConcatDataset(datasets)
     print(f"Total aggregate dataset has {len(dataset)} clips.")
 
     sampler = torch.utils.data.DistributedSampler(dataset, shuffle=True)
@@ -299,6 +303,7 @@ def train_dino(args):
 
     # ============ optionally resume training ... ============
     start_epoch = 0
+    knn_freq = args.knn_freq if hasattr(args, 'knn_freq') else 1
     # to_restore = {"epoch": 0}
     # utils.restart_from_checkpoint(
     #     os.path.join(args.output_dir, "checkpoint.pth"),
@@ -315,8 +320,6 @@ def train_dino(args):
     print("Starting DINO training !")
     for epoch in range(start_epoch, args.epochs):
         data_loader.sampler.set_epoch(epoch)
-
-        evaluate_knn(get_args(defaults=True), teacher_without_ddp)    
 
         # ============ training one epoch of DINO ... ============
         train_stats = train_one_epoch(student, teacher, teacher_without_ddp, dino_loss,
@@ -352,6 +355,10 @@ def train_dino(args):
         if utils.is_main_process():
             with (Path(args.output_dir) / "log.txt").open("a") as f:
                 f.write(json.dumps(log_stats) + "\n")
+
+        if (epoch % knn_freq == 0) or (epoch == args.epochs - 1):
+            evaluate_knn(get_args(defaults=True), teacher_without_ddp)    
+        
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {}'.format(total_time_str))

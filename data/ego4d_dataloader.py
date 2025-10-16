@@ -60,26 +60,26 @@ class Ego4DTasksDataset(Dataset):
 		info = self.meta[idx]
 		video_path = info["video_path"]
 
-		# try:
-		container = av.open(video_path)
-		stream = container.streams.video[0]
-		fps = float(stream.average_rate)
+		try:
+			container = av.open(video_path)
+			stream = container.streams.video[0]
+			fps = float(stream.average_rate)
 
-		if self.use_processed_data:
-			start_sec, end_sec = 0, info["duration"]
-		else:
-			start_sec, end_sec = info["start_sec"], info["end_sec"]
-		
-		frame_idxs = video_utils.sample_frame_indices(start_sec, end_sec, fps, time_between_frames=self.time_between_frames, num_frames=self.num_frames)
-		clip = video_utils.read_selected_frames(video_path, container, stream, frame_idxs, self.transform)
-		
-		return clip, "dummy"
+			if self.use_processed_data:
+				start_sec, end_sec = 0, info["duration"]
+			else:
+				start_sec, end_sec = info["start_sec"], info["end_sec"]
+			
+			frame_idxs = video_utils.sample_frame_indices(start_sec, end_sec, fps, time_between_frames=self.time_between_frames, num_frames=self.num_frames)
+			clip = video_utils.read_selected_frames(video_path, container, stream, frame_idxs, self.transform)
+			
+			return clip, "dummy"
 
-		# except Exception as e:
-		# 	handle_corrupt_file(e, video_path, log_path=self.corrupt_files_path)
+		except Exception as e:
+			handle_corrupt_file(e, video_path, log_path=self.corrupt_files_path)
 
-		# 	# recursion: try next sample
-		# 	return self[random.randint(0, len(self)-1)]
+			# recursion: try next sample
+			return self[random.randint(0, len(self)-1)]
 		
 
 	def _read_metadata(self, annotations, videos_dir):
