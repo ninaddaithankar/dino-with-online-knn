@@ -140,6 +140,7 @@ def get_args_parser():
     parser.add_argument("--temporal_diff", default=0.25, type=float, help="Time difference between sampled frames in seconds.")
     parser.add_argument("--knn_freq", default=1, type=int, help="run knn evaluation every n epochs.")
     parser.add_argument("--run_name", required=True, type=str, help="Name of run on wandb.")
+    parser.add_argument("--project_name", default="dino_recipe", type=str, help="Wandb project name.")
 
     return parser
 

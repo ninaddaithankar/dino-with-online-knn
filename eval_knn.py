@@ -209,7 +209,7 @@ def evaluate_knn(args, encoder=None):
         utils.init_distributed_mode(args)
 
     if utils.is_main_process():
-        wandb.init(project="dino_recipe", name=args.run_name, config=vars(args))
+        wandb.init(project=args.project_name, name=args.run_name, config=vars(args))
 
     print("git:\n  {}\n".format(utils.get_sha()))
     print("\n".join("%s: %s" % (k, str(v)) for k, v in sorted(dict(vars(args)).items())))
