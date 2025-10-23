@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --account=beig-dtai-gh
+#SBATCH --account=beex-dtai-gh
 #SBATCH --partition=ghx4
 ### NODE/CPU/MEM/GPU  ###
 #SBATCH --mem-bind=verbose,local

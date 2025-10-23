@@ -39,8 +39,8 @@ def extract_feature_pipeline(args, encoder=None):
         pth_transforms.ToTensor(),
         pth_transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
     ])
-    dataset_train = ReturnIndexDataset('train', transform, dataset_dir=args.data_path, n_samples_per_class=75)
-    dataset_val = ReturnIndexDataset('val', transform, dataset_dir=args.data_path, n_samples_per_class=25)
+    dataset_train = ReturnIndexDataset('train', transform, dataset_dir=args.data_path, n_samples_per_class=args.train_samples_per_class)
+    dataset_val = ReturnIndexDataset('val', transform, dataset_dir=args.data_path, n_samples_per_class=args.val_samples_per_class)
 
     sampler = torch.utils.data.DistributedSampler(dataset_train, shuffle=False)
 
@@ -112,7 +112,7 @@ def extract_feature_pipeline(args, encoder=None):
 def extract_features(model, data_loader, use_cuda=True, multiscale=False):
     metric_logger = utils.MetricLogger(delimiter="  ")
     features = None
-    for samples, index in metric_logger.log_every(data_loader, 10):
+    for samples, index in metric_logger.log_every(data_loader, 100):
         samples = samples.cuda(non_blocking=True)
         index = index.cuda(non_blocking=True)
         if multiscale:
@@ -208,6 +208,9 @@ def evaluate_knn(args, encoder=None):
     if not dist.is_initialized():
         utils.init_distributed_mode(args)
 
+    if utils.is_main_process():
+        wandb.init(project="dino_recipe", name=args.run_name, config=vars(args))
+
     print("git:\n  {}\n".format(utils.get_sha()))
     print("\n".join("%s: %s" % (k, str(v)) for k, v in sorted(dict(vars(args)).items())))
     cudnn.benchmark = True
@@ -248,6 +251,9 @@ def evaluate_knn(args, encoder=None):
     del train_labels
     del test_labels
 
+    if utils.is_main_process():
+        wandb.finish()
+
     # --- Force Python garbage collection ---
     gc.collect()
 
@@ -273,11 +279,16 @@ def get_args(defaults=False):
         help='Path where to save computed features, empty for no saving')
     parser.add_argument('--load_features', default=None, help="""If the features have
         already been computed, where to find them.""")
-    parser.add_argument('--num_workers', default=10, type=int, help='Number of data loading workers per GPU.')
+    parser.add_argument('--num_workers', default=20, type=int, help='Number of data loading workers per GPU.')
     parser.add_argument("--dist_url", default="env://", type=str, help="""url used to set up
         distributed training; see https://pytorch.org/docs/stable/distributed.html""")
     parser.add_argument("--local-rank", default=0, type=int, help="Please ignore and do not set this argument.")
     parser.add_argument('--data_path', default='/work/hdd/bcsi/ndaithankar/datasets/imagenet-1k-hf', type=str)
+    parser.add_argument("--run_name", default="", type=str, help="Name of run on wandb.")
+    parser.add_argument('--train_samples_per_class', default=75, type=int,
+        help='Number of samples per class to use from training set. Default -1 uses full dataset.')
+    parser.add_argument('--val_samples_per_class', default=25, type=int,
+        help='Number of samples per class to use from validation set. Default -1 uses full dataset.')
     
     if defaults:
         args = parser.parse_args(args=[])
@@ -289,5 +300,6 @@ def get_args(defaults=False):
 
 if __name__ == '__main__':
     args = get_args()
+
     evaluate_knn(args)
     

@@ -9,14 +9,14 @@ from tqdm import tqdm
 #NOTE: if you are having issues with this dataloader and perms you need to add your HF token
 #see these links - https://discuss.huggingface.co/t/imagenet-1k-is-not-available-in-huggingface-dataset-hub/25040 https://huggingface.co/docs/hub/security-tokens
 class ImageNetDataset(Dataset):
-    def __init__(self, split, transform, dataset_dir=None, n_samples_per_class=None):
+    def __init__(self, split, transform, dataset_dir=None, n_samples_per_class=-1):
         self.transform = transform
         split = 'validation' if split in ["valid", "val", "validate"] else split
         self.ds = load_dataset("imagenet-1k", split=split)
 
         # -- select n samples per class to reduce dataset size as needed
-        if n_samples_per_class is not None:
-            self.n_samples_per_class = n_samples_per_class
+        self.n_samples_per_class = n_samples_per_class
+        if n_samples_per_class > 0:
             self.ds = self._filter_by_samples_per_class(self.ds, n_samples_per_class)
 
     def __len__(self):
