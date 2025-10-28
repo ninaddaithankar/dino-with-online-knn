@@ -65,20 +65,20 @@ def extract_feature_pipeline(args, encoder=None):
     if encoder is not None:
         model = encoder
     else:
-        # if "vit" in args.arch:
-        #     model = vits.__dict__[args.arch](patch_size=args.patch_size, num_classes=0)
-        #     print(f"Model {args.arch} {args.patch_size}x{args.patch_size} built.")
-        # elif "xcit" in args.arch:
-        #     model = torch.hub.load('facebookresearch/xcit:main', args.arch, num_classes=0)
-        # elif args.arch in torchvision_models.__dict__.keys():
-        #     model = torchvision_models.__dict__[args.arch](num_classes=0)
-        #     model.fc = nn.Identity()
-        # else:
-        #     print(f"Architecture {args.arch} non supported")
-        #     sys.exit(1)
-        # utils.load_pretrained_weights(model, args.pretrained_weights, args.checkpoint_key, args.arch, args.patch_size)
+        if "vit" in args.arch:
+            model = vits.__dict__[args.arch](patch_size=args.patch_size, num_classes=0)
+            print(f"Model {args.arch} {args.patch_size}x{args.patch_size} built.")
+        elif "xcit" in args.arch:
+            model = torch.hub.load('facebookresearch/xcit:main', args.arch, num_classes=0)
+        elif args.arch in torchvision_models.__dict__.keys():
+            model = torchvision_models.__dict__[args.arch](num_classes=0)
+            model.fc = nn.Identity()
+        else:
+            print(f"Architecture {args.arch} non supported")
+            sys.exit(1)
+        utils.load_pretrained_weights(model, args.pretrained_weights, args.checkpoint_key, args.arch, args.patch_size)
 
-        model = utils.load_image_encoder_from_checkpoint(args.pretrained_weights, "dinov2", "base")
+        # model = utils.load_image_encoder_from_checkpoint(args.pretrained_weights, "dinov2", "base")
     
     model.cuda()
     model.eval()
