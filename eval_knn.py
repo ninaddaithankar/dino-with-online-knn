@@ -65,18 +65,20 @@ def extract_feature_pipeline(args, encoder=None):
     if encoder is not None:
         model = encoder
     else:
-        if "vit" in args.arch:
-            model = vits.__dict__[args.arch](patch_size=args.patch_size, num_classes=0)
-            print(f"Model {args.arch} {args.patch_size}x{args.patch_size} built.")
-        elif "xcit" in args.arch:
-            model = torch.hub.load('facebookresearch/xcit:main', args.arch, num_classes=0)
-        elif args.arch in torchvision_models.__dict__.keys():
-            model = torchvision_models.__dict__[args.arch](num_classes=0)
-            model.fc = nn.Identity()
-        else:
-            print(f"Architecture {args.arch} non supported")
-            sys.exit(1)
-        utils.load_pretrained_weights(model, args.pretrained_weights, args.checkpoint_key, args.arch, args.patch_size)
+        # if "vit" in args.arch:
+        #     model = vits.__dict__[args.arch](patch_size=args.patch_size, num_classes=0)
+        #     print(f"Model {args.arch} {args.patch_size}x{args.patch_size} built.")
+        # elif "xcit" in args.arch:
+        #     model = torch.hub.load('facebookresearch/xcit:main', args.arch, num_classes=0)
+        # elif args.arch in torchvision_models.__dict__.keys():
+        #     model = torchvision_models.__dict__[args.arch](num_classes=0)
+        #     model.fc = nn.Identity()
+        # else:
+        #     print(f"Architecture {args.arch} non supported")
+        #     sys.exit(1)
+        # utils.load_pretrained_weights(model, args.pretrained_weights, args.checkpoint_key, args.arch, args.patch_size)
+
+        model = utils.load_image_encoder_from_checkpoint(args.pretrained_weights, "dinov2", "base")
     
     model.cuda()
     model.eval()
@@ -91,7 +93,7 @@ def extract_feature_pipeline(args, encoder=None):
         train_features = nn.functional.normalize(train_features, dim=1, p=2)
         test_features = nn.functional.normalize(test_features, dim=1, p=2)
 
-        # works with both ImageFolder-like and HuggingFace datasets
+    # works with both ImageFolder-like and HuggingFace datasets
     if hasattr(dataset_train, "samples"):
         train_labels = torch.tensor([s[-1] for s in dataset_train.samples]).long()
         test_labels = torch.tensor([s[-1] for s in dataset_val.samples]).long()
@@ -208,9 +210,6 @@ def evaluate_knn(args, encoder=None):
     if not dist.is_initialized():
         utils.init_distributed_mode(args)
 
-    if utils.is_main_process():
-        wandb.init(project=args.project_name, name=args.run_name, config=vars(args))
-
     print("git:\n  {}\n".format(utils.get_sha()))
     print("\n".join("%s: %s" % (k, str(v)) for k, v in sorted(dict(vars(args)).items())))
     cudnn.benchmark = True
@@ -251,8 +250,6 @@ def evaluate_knn(args, encoder=None):
     del train_labels
     del test_labels
 
-    if utils.is_main_process():
-        wandb.finish()
 
     # --- Force Python garbage collection ---
     gc.collect()
@@ -263,7 +260,7 @@ def evaluate_knn(args, encoder=None):
 
 def get_args(defaults=False):
     parser = argparse.ArgumentParser('Evaluation with weighted k-NN on ImageNet')
-    parser.add_argument('--batch_size_per_gpu', default=32, type=int, help='Per-GPU batch-size')
+    parser.add_argument('--batch_size_per_gpu', default=128, type=int, help='Per-GPU batch-size')
     parser.add_argument('--nb_knn', default=[10, 20], nargs='+', type=int,
         help='Number of NN to use. 20 is usually working the best.')
     parser.add_argument('--temperature', default=0.07, type=float,
@@ -279,12 +276,13 @@ def get_args(defaults=False):
         help='Path where to save computed features, empty for no saving')
     parser.add_argument('--load_features', default=None, help="""If the features have
         already been computed, where to find them.""")
-    parser.add_argument('--num_workers', default=20, type=int, help='Number of data loading workers per GPU.')
+    parser.add_argument('--num_workers', default=30, type=int, help='Number of data loading workers per GPU.')
     parser.add_argument("--dist_url", default="env://", type=str, help="""url used to set up
         distributed training; see https://pytorch.org/docs/stable/distributed.html""")
     parser.add_argument("--local-rank", default=0, type=int, help="Please ignore and do not set this argument.")
     parser.add_argument('--data_path', default='/work/hdd/bcsi/ndaithankar/datasets/imagenet-1k-hf', type=str)
     parser.add_argument("--run_name", default="", type=str, help="Name of run on wandb.")
+    parser.add_argument("--project_name", default="", type=str, help="Name of project on wandb.")
     parser.add_argument('--train_samples_per_class', default=75, type=int,
         help='Number of samples per class to use from training set. Default -1 uses full dataset.')
     parser.add_argument('--val_samples_per_class', default=25, type=int,
@@ -301,5 +299,18 @@ def get_args(defaults=False):
 if __name__ == '__main__':
     args = get_args()
 
+    if not dist.is_initialized():
+        utils.init_distributed_mode(args)
+    
+    if utils.is_main_process():
+        wandb.init(
+            project=args.project_name,
+            name=args.run_name,
+            config=vars(args),
+        )
+
     evaluate_knn(args)
+
+    if utils.is_main_process():
+        wandb.finish()
     

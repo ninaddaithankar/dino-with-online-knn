@@ -23,10 +23,10 @@ mkdir -p logs/slurm/ini1k_eval/
 module purge
 ulimit -n 65535
 
-torchrun --nproc_per_node=4 eval_knn.py \
+torchrun --nproc_per_node=2 eval_knn.py \
 --run_name ${RUN_NAME} \
 --arch vit_base \
---batch_size_per_gpu 32 \
+--batch_size_per_gpu 128 \
 --train_samples_per_class -1 \
 --val_samples_per_class -1 \
---pretrained_weights "/work/hdd/bcsi/ndaithankar/playground/dino/output/checkpoint0013.pth"\
+--pretrained_weights "/work/hdd/bcsi/ndaithankar/tdv/logs/checkpoints/ONLY_SSV2_scratch_ssv2_2025-10-14_23-41-04_/last.ckpt"\

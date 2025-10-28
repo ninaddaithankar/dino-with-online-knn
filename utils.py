@@ -827,3 +827,52 @@ def multi_scale(samples, model):
     v /= 3
     v /= v.norm()
     return v
+
+
+
+def create_image_encoder(backbone_type, backbone_size, pretrained=True):
+    vit_backbone_archs = {
+        "small": "vits14",
+        "base": "vitb14",
+        "large": "vitl14",
+        "huge": "vith14",
+        "giant": "vitg14",
+    }
+        
+    if backbone_type == 'dinov2':
+        if pretrained:
+            backbone_name = vit_backbone_archs[backbone_size]
+            backbone = torch.hub.load('facebookresearch/dinov2', model=f"dinov2_{backbone_name}")
+        else:
+            from dinov2.vision_transformer import vit_small, vit_base, vit_large, vit_giant2
+            vit_constructors = {
+                "small": vit_small,
+                "base": vit_base,
+                "large": vit_large,
+                "giant": vit_giant2,
+            }
+            backbone = vit_constructors[backbone_size](patch_size=14)
+            
+        del backbone._parameters['mask_token'] # this is done as this param was unused and was causing pl ddp unused param issues
+        backbone = backbone.to("cpu")  # ensure on cpu to prevent any device mismatch issues, lightning will handle moving to gpu
+        return backbone
+
+    else:
+        raise NotImplementedError(f"Unspported backbone type: {backbone_type}")
+
+
+def load_image_encoder_from_checkpoint(ckpt, backbone_type, backbone_size):
+	checkpoint = torch.load(ckpt, map_location="cpu", weights_only=False)
+
+	encoder_sd = {k.replace("model.frame_encoder.", ""): v
+				  for k, v in checkpoint["state_dict"].items()
+				  if k.startswith("model.frame_encoder.")}
+
+	encoder = create_image_encoder(backbone_type, backbone_size, pretrained=False)
+	encoder.load_state_dict(encoder_sd, strict=True)
+
+	encoder.eval().to("cuda")
+	for p in encoder.parameters():
+		p.requires_grad_(False)
+
+	return encoder
