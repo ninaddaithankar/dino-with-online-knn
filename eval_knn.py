@@ -16,7 +16,6 @@ import gc
 import sys
 import argparse
 
-
 import torch
 from torch import nn
 import torch.distributed as dist
@@ -39,8 +38,8 @@ def extract_feature_pipeline(args, encoder=None):
         pth_transforms.ToTensor(),
         pth_transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
     ])
-    dataset_train = ReturnIndexDataset('train', transform, dataset_dir=args.data_path, n_samples_per_class=args.train_samples_per_class)
-    dataset_val = ReturnIndexDataset('val', transform, dataset_dir=args.data_path, n_samples_per_class=args.val_samples_per_class)
+    dataset_train = ReturnIndexDataset(args, 'train', transform, dataset_dir=args.data_path, n_samples_per_class=args.train_samples_per_class)
+    dataset_val = ReturnIndexDataset(args, 'val', transform, dataset_dir=args.data_path, n_samples_per_class=args.val_samples_per_class)
 
     sampler = torch.utils.data.DistributedSampler(dataset_train, shuffle=False)
 
@@ -283,9 +282,9 @@ def get_args(defaults=False):
     parser.add_argument('--data_path', default='/work/hdd/bcsi/ndaithankar/datasets/imagenet-1k-hf', type=str)
     parser.add_argument("--run_name", default="", type=str, help="Name of run on wandb.")
     parser.add_argument("--project_name", default="", type=str, help="Name of project on wandb.")
-    parser.add_argument('--train_samples_per_class', default=75, type=int,
+    parser.add_argument('--train_samples_per_class', default=-1, type=int,
         help='Number of samples per class to use from training set. Default -1 uses full dataset.')
-    parser.add_argument('--val_samples_per_class', default=25, type=int,
+    parser.add_argument('--val_samples_per_class', default=-1, type=int,
         help='Number of samples per class to use from validation set. Default -1 uses full dataset.')
     
     if defaults:

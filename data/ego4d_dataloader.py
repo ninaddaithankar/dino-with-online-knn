@@ -19,7 +19,7 @@ class Ego4DTasksDataset(Dataset):
 		split: str,                                             # "train", "val", "test"
 		dataset_dir: str = None,                                # path to Ego4D dataset
 		transform: transforms.Compose = None,
-		task = "fullscale"                                        # "moments", "nlq", "va", "ego4d"
+		task = "moments"                                        # "moments", "nlq", "va", "ego4d"
 	):
 		super().__init__()
 		self.hparams = hparams

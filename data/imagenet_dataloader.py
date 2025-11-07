@@ -9,7 +9,7 @@ from tqdm import tqdm
 #NOTE: if you are having issues with this dataloader and perms you need to add your HF token
 #see these links - https://discuss.huggingface.co/t/imagenet-1k-is-not-available-in-huggingface-dataset-hub/25040 https://huggingface.co/docs/hub/security-tokens
 class ImageNetDataset(Dataset):
-    def __init__(self, split, transform, dataset_dir=None, n_samples_per_class=-1):
+    def __init__(self, hparams, split, transform, dataset_dir=None, n_samples_per_class=-1):
         self.transform = transform
         split = 'validation' if split in ["valid", "val", "validate"] else split
         self.ds = load_dataset("imagenet-1k", split=split)
@@ -50,3 +50,26 @@ class ImageNetDataset(Dataset):
         return dataset.select(selected_indices)
 
 
+import torch
+
+class ImageNetSequentialClips(ImageNetDataset):
+    def __init__(self, hparams, split, transform, dataset_dir=None, n_samples_per_class=-1):
+        super().__init__(hparams, split, transform, dataset_dir=dataset_dir, n_samples_per_class=n_samples_per_class)
+        self.num_frames = hparams.context_length
+        self.num_clips = len(self.ds) // self.num_frames
+
+        # build an index list; this will be reshuffled every epoch via sampler behavior
+        self.indices = list(range(len(self.ds)))
+
+    def __len__(self):
+        return self.num_clips
+
+    def __getitem__(self, idx):
+        start = idx * self.num_frames
+        end = start + self.num_frames
+        frame_indices = self.indices[start:end]
+
+        # get frames using parent class __getitem__
+        frames = [super().__getitem__(i)[0] for i in frame_indices]
+        clip = torch.stack(frames)   # (T, C, H, W)
+        return clip, -1

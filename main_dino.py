@@ -33,6 +33,7 @@ from torchvision import models as torchvision_models
 import wandb
 
 from data.ego4d_dataloader import Ego4DTasksDataset
+from data.imagenet_dataloader import ImageNetDataset
 from data.something_dataloader import SomethingDataset
 from eval_knn import evaluate_knn, get_args
 import utils
@@ -126,8 +127,8 @@ def get_args_parser():
         Used for small local view cropping of multi-crop.""")
 
     # Misc
-    parser.add_argument('--data_path', default='/path/to/imagenet/train/', type=str,
-        help='Please specify path to the training data.')
+    parser.add_argument('--datasets', default='ssv2', type=str, help='Comma separated list of datasets to train on.')
+    parser.add_argument('--data_paths', default='/path/to/imagenet/train/', type=str, help='Please specify path to the training data.')
     parser.add_argument('--output_dir', default=".", type=str, help='Path to save logs and checkpoints.')
     parser.add_argument('--saveckp_freq', default=1, type=int, help='Save checkpoint every x epochs.')
     parser.add_argument('--seed', default=0, type=int, help='Random seed.')
@@ -179,18 +180,37 @@ def train_dino(args):
         "use_preprocessed_ego4d": True,
     })
 
-    data_paths = [p.strip() for p in args.data_path.split(',')]
+    datasets_list = [d.strip for d in args.datasets.split(',')]
+    data_paths = [p.strip() for p in args.data_paths.split(',')]
+
+    dataset_classes = {
+        'imagenet': ImageNetDataset,
+        'ego4d': Ego4DTasksDataset,
+        'ssv2': SomethingDataset,
+    }
 
     datasets = []
+    for ds_name, data_path in zip(datasets_list, data_paths):
+        dataset_class = dataset_classes.get(ds_name)
+        if dataset_class is None:
+            raise ValueError(f"Unknown dataset: {ds_name}. Skipping...")
+        else:
+            ds = dataset_class(hparams, "train", dataset_dir=data_path, transform=transform)
+            datasets.append(ds)
+            print(f"Loaded {ds_name} with {len(ds)} items.")
 
     # dataset = datasets.ImageFolder(args.data_path, transform=transform)
-    ego4d = Ego4DTasksDataset(hparams, "train", dataset_dir=data_paths[0], transform=transform, task="moments")
-    print(f"Loaded Ego4D with {len(ego4d)} clips.")
-    datasets.append(ego4d)
+    # imagenet1k = ImageNetDataset('train', transform, dataset_dir=args.data_path, n_samples_per_class=-1)
+    # print(f"Loaded ImageNet-1K with {len(imagenet1k)} images.")
+    # datasets.append(imagenet1k)
 
-    ssv2 = SomethingDataset(hparams, "train", dataset_dir=data_paths[1], transform=transform)
-    print(f"Loaded SSv2 with {len(ssv2)} clips.")
-    datasets.append(ssv2)
+    # ego4d = Ego4DTasksDataset(hparams, "train", dataset_dir=data_paths[0], transform=transform, task="moments")
+    # print(f"Loaded Ego4D with {len(ego4d)} clips.")
+    # datasets.append(ego4d)
+
+    # ssv2 = SomethingDataset(hparams, "train", dataset_dir=data_paths[1], transform=transform)
+    # print(f"Loaded SSv2 with {len(ssv2)} clips.")
+    # datasets.append(ssv2)
     
     dataset = torch.utils.data.ConcatDataset(datasets)
     print(f"Total aggregate dataset has {len(dataset)} clips.")
