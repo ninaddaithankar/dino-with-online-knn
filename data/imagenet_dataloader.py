@@ -70,6 +70,6 @@ class ImageNetSequentialClips(ImageNetDataset):
         frame_indices = self.indices[start:end]
 
         # get frames using parent class __getitem__
-        frames = [super().__getitem__(i)[0] for i in frame_indices]
-        clip = torch.stack(frames)   # (T, C, H, W)
-        return clip, -1
+        crops = [ImageNetDataset.__getitem__(self, i)[0] for i in frame_indices]
+        clip = [torch.stack(same_crops) for same_crops in zip(*crops)] 
+        return clip, "dummy"

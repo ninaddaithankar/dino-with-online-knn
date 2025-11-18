@@ -33,7 +33,7 @@ from torchvision import models as torchvision_models
 import wandb
 
 from data.ego4d_dataloader import Ego4DTasksDataset
-from data.imagenet_dataloader import ImageNetDataset
+from data.imagenet_dataloader import ImageNetSequentialClips
 from data.something_dataloader import SomethingDataset
 from eval_knn import evaluate_knn, get_args
 import utils
@@ -166,7 +166,7 @@ def train_dino(args):
     )
 
     hparams = SimpleNamespace(**{
-        "dataset_dir": args.data_path,
+        "dataset_dir": None,
         "context_length": args.context_length,
         "time_between_frames": args.temporal_diff,
         "sampling_rate": 0.0,
@@ -180,17 +180,17 @@ def train_dino(args):
         "use_preprocessed_ego4d": True,
     })
 
-    datasets_list = [d.strip for d in args.datasets.split(',')]
+    datasets_list = [d.strip() for d in args.datasets.split(',')]
     data_paths = [p.strip() for p in args.data_paths.split(',')]
 
     dataset_classes = {
-        'imagenet': ImageNetDataset,
+        'imagenet': ImageNetSequentialClips,
         'ego4d': Ego4DTasksDataset,
         'ssv2': SomethingDataset,
     }
 
     datasets = []
-    for ds_name, data_path in zip(datasets_list, data_paths):
+    for ds_name, data_path in zip(datasets_list, data_paths[:len(datasets_list)]):
         dataset_class = dataset_classes.get(ds_name)
         if dataset_class is None:
             raise ValueError(f"Unknown dataset: {ds_name}. Skipping...")
@@ -198,22 +198,9 @@ def train_dino(args):
             ds = dataset_class(hparams, "train", dataset_dir=data_path, transform=transform)
             datasets.append(ds)
             print(f"Loaded {ds_name} with {len(ds)} items.")
-
-    # dataset = datasets.ImageFolder(args.data_path, transform=transform)
-    # imagenet1k = ImageNetDataset('train', transform, dataset_dir=args.data_path, n_samples_per_class=-1)
-    # print(f"Loaded ImageNet-1K with {len(imagenet1k)} images.")
-    # datasets.append(imagenet1k)
-
-    # ego4d = Ego4DTasksDataset(hparams, "train", dataset_dir=data_paths[0], transform=transform, task="moments")
-    # print(f"Loaded Ego4D with {len(ego4d)} clips.")
-    # datasets.append(ego4d)
-
-    # ssv2 = SomethingDataset(hparams, "train", dataset_dir=data_paths[1], transform=transform)
-    # print(f"Loaded SSv2 with {len(ssv2)} clips.")
-    # datasets.append(ssv2)
     
     dataset = torch.utils.data.ConcatDataset(datasets)
-    print(f"Total aggregate dataset has {len(dataset)} clips.")
+    print(f"Total aggregate dataset has {len(dataset)} items.")
 
     sampler = torch.utils.data.DistributedSampler(dataset, shuffle=True)
     data_loader = torch.utils.data.DataLoader(
@@ -328,10 +315,6 @@ def train_dino(args):
     start_epoch = 0
     knn_freq = args.knn_freq if hasattr(args, 'knn_freq') else 1
     acc_grad_steps = args.acc_grad_steps
-    
-    output_dir = os.path.join(args.output_dir, args.run_name)
-    Path(output_dir).mkdir(parents=True, exist_ok=True)
-    args.output_dir = output_dir
 
     # to_restore = {"epoch": 0}
     # utils.restart_from_checkpoint(
@@ -349,6 +332,9 @@ def train_dino(args):
     print("Starting DINO training !")
     for epoch in range(start_epoch, args.epochs):
         data_loader.sampler.set_epoch(epoch)
+
+        if (epoch % knn_freq == 0) or (epoch == args.epochs - 1):
+            evaluate_knn(get_args(defaults=True), teacher_without_ddp.backbone) 
 
         # ============ training one epoch of DINO ... ============
         train_stats = train_one_epoch(student, teacher, teacher_without_ddp, dino_loss,
@@ -383,10 +369,7 @@ def train_dino(args):
                      'epoch': epoch}
         if utils.is_main_process():
             with (Path(args.output_dir) / "log.txt").open("a") as f:
-                f.write(json.dumps(log_stats) + "\n")
-
-        if (epoch % knn_freq == 0) or (epoch == args.epochs - 1):
-            evaluate_knn(get_args(defaults=True), teacher_without_ddp)    
+                f.write(json.dumps(log_stats) + "\n")   
         
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
