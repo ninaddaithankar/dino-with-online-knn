@@ -33,7 +33,7 @@ from torchvision import models as torchvision_models
 import wandb
 
 from data.ego4d_dataloader import Ego4DTasksDataset
-from data.imagenet_dataloader import ImageNetSequentialClips
+from data.imagenet_dataloader import ImageNetDataset, ImageNetSequentialClips
 from data.something_dataloader import SomethingDataset
 from eval_knn import evaluate_knn, get_args
 import utils
@@ -184,7 +184,8 @@ def train_dino(args):
     data_paths = [p.strip() for p in args.data_paths.split(',')]
 
     dataset_classes = {
-        'imagenet': ImageNetSequentialClips,
+        'imagenet': ImageNetDataset,
+        'imagenet-video': ImageNetSequentialClips,
         'ego4d': Ego4DTasksDataset,
         'ssv2': SomethingDataset,
     }
@@ -333,9 +334,6 @@ def train_dino(args):
     for epoch in range(start_epoch, args.epochs):
         data_loader.sampler.set_epoch(epoch)
 
-        if (epoch % knn_freq == 0) or (epoch == args.epochs - 1):
-            evaluate_knn(get_args(defaults=True), teacher_without_ddp.backbone) 
-
         # ============ training one epoch of DINO ... ============
         train_stats = train_one_epoch(student, teacher, teacher_without_ddp, dino_loss,
             data_loader, optimizer, lr_schedule, wd_schedule, momentum_schedule,
@@ -346,10 +344,8 @@ def train_dino(args):
             # log scalar metrics
             wandb.log({f"train/{k}_epoch": v for k, v in train_stats.items()})
 
-            # results = evaluate_knn(get_args(default=True), teacher_without_ddp)
-            # for k, v in results.items():
-            #     wandb.log({f"eval/{k}_epoch": v[0]})
-            #     wandb.log({f"eval/{k}_top5_epoch": v[1]})
+        if (epoch % knn_freq == 0) or (epoch == args.epochs - 1):
+            evaluate_knn(get_args(defaults=True), teacher_without_ddp.backbone) 
 
         # ============ writing logs ... ============
         save_dict = {
@@ -397,8 +393,11 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
                 if i == 0:  # only the first group is regularized
                     param_group["weight_decay"] = wd_schedule[it]
 
-        # flatten and move images to gpu
-        images = [im.flatten(0, 1).cuda(non_blocking=True) for im in images]
+        # flatten time dim if video and move images to gpu
+        if images[0].dim() == 5:  # for video inputs
+            images = [im.flatten(0, 1).cuda(non_blocking=True) for im in images]
+        else:
+            images = [im.cuda(non_blocking=True) for im in images]
 
         # teacher and student forward passes + compute dino loss
         with torch.cuda.amp.autocast(fp16_scaler is not None):
