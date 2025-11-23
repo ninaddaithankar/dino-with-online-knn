@@ -49,7 +49,7 @@ def get_args_parser():
 
     # Model parameters
     parser.add_argument('--arch', default='vit_small', type=str,
-        choices=['vit_tiny', 'vit_small', 'vit_base', 'xcit', 'deit_tiny', 'deit_small'] \
+        choices=['vit_tiny', 'vit_small', 'vit_base','vit_large', 'vit_huge', 'xcit', 'deit_tiny', 'deit_small'] \
                 + torchvision_archs + torch.hub.list("facebookresearch/xcit:main"),
         help="""Name of architecture to train. For quick experiments with ViTs,
         we recommend using vit_tiny or vit_small.""")
@@ -151,7 +151,7 @@ def train_dino(args):
 
     # init wandb
     if utils.is_main_process():
-        wandb.init(project="dino_recipe", name=args.run_name, config=vars(args))
+        wandb.init(project=args.project_name, name=args.run_name, config=vars(args))
 
     utils.fix_random_seeds(args.seed)
     print("git:\n  {}\n".format(utils.get_sha()))
