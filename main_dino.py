@@ -125,6 +125,9 @@ def get_args_parser():
     parser.add_argument('--local_crops_scale', type=float, nargs='+', default=(0.05, 0.4),
         help="""Scale range of the cropped image before resizing, relatively to the origin image.
         Used for small local view cropping of multi-crop.""")
+    parser.add_argument('--minimal_augmentation', type=utils.bool_flag, default=False, help="""Whether to use minimal augmentation
+        (only random resized crop and normalization) for the global views. Useful for debugging or
+        to disable color-based augmentations when working with grayscale images.""")
 
     # Misc
     parser.add_argument('--datasets', default='ssv2', type=str, help='Comma separated list of datasets to train on.')
@@ -163,6 +166,7 @@ def train_dino(args):
         args.global_crops_scale,
         args.local_crops_scale,
         args.local_crops_number,
+        use_minimal=args.minimal_augmentation
     )
 
     hparams = SimpleNamespace(**{
@@ -237,7 +241,7 @@ def train_dino(args):
         teacher = torchvision_models.__dict__[args.arch]()
         embed_dim = student.fc.weight.shape[1]
     else:
-        print(f"Unknow architecture: {args.arch}")
+        print(f"Unknown architecture: {args.arch}")
 
     # multi-crop wrapper handles forward with inputs of different resolutions
     student = utils.MultiCropWrapper(student, DINOHead(
@@ -525,7 +529,7 @@ class DINOLoss(nn.Module):
 
 
 class DataAugmentationDINO(object):
-    def __init__(self, global_crops_scale, local_crops_scale, local_crops_number):
+    def __init__(self, global_crops_scale, local_crops_scale, local_crops_number, use_minimal=False):
         flip_and_color_jitter = transforms.Compose([
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomApply(
@@ -539,31 +543,44 @@ class DataAugmentationDINO(object):
             transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
         ])
 
-        # first global crop
-        self.global_transfo1 = transforms.Compose([
-            transforms.RandomResizedCrop(224, scale=global_crops_scale, interpolation=Image.BICUBIC),
-            flip_and_color_jitter,
-            utils.GaussianBlur(1.0),
-            normalize,
-        ])
-        # second global crop
-        self.global_transfo2 = transforms.Compose([
-            transforms.RandomResizedCrop(224, scale=global_crops_scale, interpolation=Image.BICUBIC),
-            flip_and_color_jitter,
-            utils.GaussianBlur(0.1),
-            utils.Solarization(0.2),
-            normalize,
-        ])
-        # transformation for the local small crops
-        self.local_crops_number = local_crops_number
-        self.local_transfo = transforms.Compose([
-            transforms.RandomResizedCrop(96, scale=local_crops_scale, interpolation=Image.BICUBIC),
-            flip_and_color_jitter,
-            utils.GaussianBlur(p=0.5),
-            normalize,
-        ])
+        self.use_minimal = use_minimal
+        if use_minimal:
+            minimal = transforms.Compose([
+                transforms.RandomResizedCrop(224, scale=global_crops_scale, interpolation=Image.BICUBIC),
+                normalize,
+            ])
+            self.global_transfo1 = minimal
+            self.global_transfo2 = minimal
+
+        else:
+            # first global crop
+            self.global_transfo1 = transforms.Compose([
+                transforms.RandomResizedCrop(224, scale=global_crops_scale, interpolation=Image.BICUBIC),
+                flip_and_color_jitter,
+                utils.GaussianBlur(1.0),
+                normalize,
+            ])
+            # second global crop
+            self.global_transfo2 = transforms.Compose([
+                transforms.RandomResizedCrop(224, scale=global_crops_scale, interpolation=Image.BICUBIC),
+                flip_and_color_jitter,
+                utils.GaussianBlur(0.1),
+                utils.Solarization(0.2),
+                normalize,
+            ])
+            # transformation for the local small crops
+            self.local_crops_number = local_crops_number
+            self.local_transfo = transforms.Compose([
+                transforms.RandomResizedCrop(96, scale=local_crops_scale, interpolation=Image.BICUBIC),
+                flip_and_color_jitter,
+                utils.GaussianBlur(p=0.5),
+                normalize,
+            ])
 
     def __call__(self, image):
+        if self.use_minimal:
+            return [self.global_transfo1(image), self.global_transfo2(image)]
+        
         crops = []
         crops.append(self.global_transfo1(image))
         crops.append(self.global_transfo2(image))
