@@ -15,9 +15,9 @@
 #SBATCH --gpus-per-node=2
 
 ### LOG INFO ###
-#SBATCH --job-name=VIT_L_dino_only_ssv2_k_1024
-#SBATCH --output=logs/slurm/dino_recipe/VIT_L_dino_only_ssv2_k_1024%A-%a%A-%a.log
-export RUN_NAME="VIT_L_dino_only_ssv2_k_1024"
+#SBATCH --job-name=VIT_H_dino_only_ssv2_k_1024
+#SBATCH --output=logs/slurm/dino_recipe/VIT_H_dino_only_ssv2_k_1024%A-%a%A-%a.log
+export RUN_NAME="VIT_H_dino_only_ssv2_k_1024"
 
 OUTPUT_BASE="/work/hdd/bcsi/ndaithankar/playground/dino/output"
 OUTPUT_DIR="${OUTPUT_BASE}/${RUN_NAME}_${SLURM_JOB_ID}"
@@ -31,7 +31,7 @@ NUM_GPUS=$(nvidia-smi -L | wc -l)
 
 torchrun --nproc_per_node=${NUM_GPUS} main_dino.py \
 --run_name ${RUN_NAME} \
---project_name debug \
+--project_name dino_recipe \
 --arch vit_huge \
 --batch_size_per_gpu 2 \
 --acc_grad_steps 4 \
