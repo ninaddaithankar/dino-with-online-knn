@@ -546,11 +546,16 @@ class DataAugmentationDINO(object):
         self.use_minimal = use_minimal
         if use_minimal:
             minimal = transforms.Compose([
-                transforms.RandomResizedCrop(224, scale=global_crops_scale, interpolation=Image.BICUBIC),
+                # transforms.RandomResizedCrop(224, scale=global_crops_scale, interpolation=Image.BICUBIC),
+                transforms.Resize(256, interpolation=Image.BICUBIC),
+                transforms.CenterCrop(224),
                 normalize,
             ])
             self.global_transfo1 = minimal
             self.global_transfo2 = minimal
+
+            self.local_crops_number = 0
+            self.local_transfo = None
 
         else:
             # first global crop
