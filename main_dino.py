@@ -398,15 +398,18 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
                     param_group["weight_decay"] = wd_schedule[it]
 
         # flatten time dim if video and move images to gpu
-        if images[0].dim() == 5:  # for video inputs
-            images = [im.flatten(0, 1).cuda(non_blocking=True) for im in images]
+        prev_frames, next_frames = images
+        if prev_frames[0].dim() == 5:  # for video inputs
+            prev_frames = [im.flatten(0, 1).cuda(non_blocking=True) for im in prev_frames]
+            next_frames = [im.flatten(0, 1).cuda(non_blocking=True) for im in next_frames]
         else:
-            images = [im.cuda(non_blocking=True) for im in images]
+            prev_frames = [im.cuda(non_blocking=True) for im in prev_frames]
+            next_frames = [im.cuda(non_blocking=True) for im in next_frames]
 
         # teacher and student forward passes + compute dino loss
         with torch.cuda.amp.autocast(fp16_scaler is not None):
-            teacher_output = teacher(images[:2])  # only the 2 global views pass through the teacher
-            student_output = student(images)
+            teacher_output = teacher(next_frames[0])  # only the 2 global views pass through the teacher
+            student_output = student(prev_frames[0])
             loss = dino_loss(student_output, teacher_output, epoch)
 
             if acc_grad_steps > 1:
@@ -547,8 +550,8 @@ class DataAugmentationDINO(object):
         if use_minimal:
             minimal = transforms.Compose([
                 # transforms.RandomResizedCrop(224, scale=global_crops_scale, interpolation=Image.BICUBIC),
-                transforms.Resize(256, interpolation=Image.BICUBIC),
-                transforms.CenterCrop(224),
+                # transforms.CenterCrop(224),
+                transforms.Resize((224, 224)),
                 normalize,
             ])
             self.global_transfo1 = minimal
@@ -584,7 +587,7 @@ class DataAugmentationDINO(object):
 
     def __call__(self, image):
         if self.use_minimal:
-            return [self.global_transfo1(image), self.global_transfo2(image)]
+            return [self.global_transfo1(image)]
         
         crops = []
         crops.append(self.global_transfo1(image))

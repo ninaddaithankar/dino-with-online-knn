@@ -158,35 +158,21 @@ class SomethingDataset(Dataset):
             video_length = self.get_length(video_path)
             total_frames = self.get_num_frames(video_path)-1
 
-            if self.hparams.preencode_dataset:
-                # -- return all frames from video   
-                frame_idx_list = torch.arange(0, total_frames).long()
-                frames = self.capture_video_frames(video_path, total_frames, frame_idx_list)
-            else:
-                # -- randomly pick out required frames
-                frame_idx_list = self.get_frame_indices(video_length, total_frames)
-                crops = self.capture_video_frames(video_path, self.num_frames, frame_idx_list)
 
-            frames = [torch.stack(same_crops) for same_crops in zip(*crops)]
-            # print(f"frames shape: {len(frames)}, {frames[0].shape}")
+            # -- randomly pick out required frames
+            frame_idx_list = self.get_frame_indices(video_length, total_frames)
+            crops = self.capture_video_frames(video_path, self.num_frames, frame_idx_list)
 
-            # if self.hparams.use_preencoded_dataset and (not self.hparams.preencode_dataset):
-            #     # -- retrieve frame encodings from hdf5 file
-            #     self._init_hdf5()
+            prev_crops = crops[:-1]
+            next_crops = crops[1:]
 
-            #     encoded_frames = self.hdf5_file[f"{self.split}/{video_id}"]
-            #     encoded_frames = [torch.tensor(encoded_frames[str(idx)][:]) for idx in frame_idx_list]
-            #     encoded_frames = torch.stack(encoded_frames)
-
-            # if self.hparams.use_preencoded_dataset:
-            #     return frames, encoded_frames
+            prev_frames = [torch.stack(same_crops) for same_crops in zip(*prev_crops)]
+            next_frames = [torch.stack(same_crops) for same_crops in zip(*next_crops)]
             
-            # if self.hparams.preencode_dataset:
-            #     return frames, video_id
-            
-            # return frames, label
-            return frames, "dummy"
-            # not returning label for now since need to use aggregate dataloader
+            print(f"prev_frames shape: {prev_frames[0].shape}, next_frames shape: {next_frames[0].shape}")
+
+            return (prev_frames, next_frames), "dummy"
+        
             
         except Exception as exception:
             log_path = self.ignore_filepath if self.ignore_filepath else self.potential_ignore_filepath

@@ -29,13 +29,13 @@ module purge
 
 NUM_GPUS=2
 
-CUDA_VISIBLE_DEVICES=2,3 torchrun --master_port=29512 --nproc_per_node=${NUM_GPUS} main_dino.py \
+CUDA_VISIBLE_DEVICES=6,7 torchrun --master_port=29513 --nproc_per_node=${NUM_GPUS} main_dino.py \
 --run_name ${RUN_NAME} \
 --project_name dino_recipe \
 --minimal_augmentation True \
 --local_crops_number 0 \
 --arch vit_base \
---batch_size_per_gpu 16 \
+--batch_size_per_gpu 8 \
 --epochs 100 \
 --knn_freq 1 \
 --out_dim 1024 \
