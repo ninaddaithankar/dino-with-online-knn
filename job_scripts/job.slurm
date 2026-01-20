@@ -15,9 +15,9 @@
 #SBATCH --gpus-per-node=2
 
 ### LOG INFO ###
-#SBATCH --job-name=CENTER_CROP_only_ssv2_k_1024
-#SBATCH --output=logs/slurm/dino_recipe/CENTER_CROP_only_ssv2_k_1024%A-%a%A-%a.log
-export RUN_NAME="CENTER_CROP_only_ssv2_k_1024"
+#SBATCH --job-name=TDV_STYLE_no_crops_only_ssv2_k_1024
+#SBATCH --output=logs/slurm/dino_recipe/TDV_STYLE_no_crops_only_ssv2_k_1024%A-%a%A-%a.log
+export RUN_NAME="TDV_STYLE_no_crops_only_ssv2_k_1024"
 
 OUTPUT_BASE="/shared/nas2/ninadd2/repos/dino-recipe/output"
 OUTPUT_DIR="${OUTPUT_BASE}/${RUN_NAME}_${SLURM_JOB_ID}"

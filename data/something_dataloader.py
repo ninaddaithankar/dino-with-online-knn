@@ -168,8 +168,6 @@ class SomethingDataset(Dataset):
 
             prev_frames = [torch.stack(same_crops) for same_crops in zip(*prev_crops)]
             next_frames = [torch.stack(same_crops) for same_crops in zip(*next_crops)]
-            
-            print(f"prev_frames shape: {prev_frames[0].shape}, next_frames shape: {next_frames[0].shape}")
 
             return (prev_frames, next_frames), "dummy"
         
