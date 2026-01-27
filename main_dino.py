@@ -128,6 +128,7 @@ def get_args_parser():
     parser.add_argument('--minimal_augmentation', type=utils.bool_flag, default=False, help="""Whether to use minimal augmentation
         (only random resized crop and normalization) for the global views. Useful for debugging or
         to disable color-based augmentations when working with grayscale images.""")
+    parser.add_argument('--mask_ratio', default=0.0, type=float, help="Proportion of the visible patches in the input.")
 
     # Misc
     parser.add_argument('--datasets', default='ssv2', type=str, help='Comma separated list of datasets to train on.')
@@ -409,7 +410,7 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
         # teacher and student forward passes + compute dino loss
         with torch.cuda.amp.autocast(fp16_scaler is not None):
             teacher_output = teacher(next_frames[0])  # only the 2 global views pass through the teacher
-            student_output = student(prev_frames[0])
+            student_output = student(prev_frames[0], args.mask_ratio)
             loss = dino_loss(student_output, teacher_output, epoch)
 
             if acc_grad_steps > 1:
