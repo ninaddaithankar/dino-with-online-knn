@@ -229,6 +229,7 @@ def train_dino(args):
         student = vits.__dict__[args.arch](
             patch_size=args.patch_size,
             drop_path_rate=args.drop_path_rate,  # stochastic depth
+            use_masking=(args.mask_ratio > 0.0),
         )
         teacher = vits.__dict__[args.arch](patch_size=args.patch_size)
         embed_dim = student.embed_dim

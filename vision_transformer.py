@@ -135,7 +135,7 @@ class VisionTransformer(nn.Module):
     """ Vision Transformer """
     def __init__(self, img_size=[224], patch_size=16, in_chans=3, num_classes=0, embed_dim=768, depth=12,
                  num_heads=12, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop_rate=0., attn_drop_rate=0.,
-                 drop_path_rate=0., norm_layer=nn.LayerNorm, **kwargs):
+                 drop_path_rate=0., use_masking=False, norm_layer=nn.LayerNorm, **kwargs):
         super().__init__()
         self.num_features = self.embed_dim = embed_dim
 
@@ -143,8 +143,8 @@ class VisionTransformer(nn.Module):
             img_size=img_size[0], patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
         num_patches = self.patch_embed.num_patches
 
-        
-        self.mask_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        if use_masking:
+            self.mask_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
         self.pos_drop = nn.Dropout(p=drop_rate)
