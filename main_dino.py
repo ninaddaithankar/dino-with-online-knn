@@ -231,7 +231,7 @@ def train_dino(args):
             drop_path_rate=args.drop_path_rate,  # stochastic depth
             use_masking=(args.mask_ratio > 0.0),
         )
-        teacher = vits.__dict__[args.arch](patch_size=args.patch_size)
+        teacher = vits.__dict__[args.arch](patch_size=args.patch_size, use_masking=(args.mask_ratio > 0.0))
         embed_dim = student.embed_dim
     # if the network is a XCiT
     elif args.arch in torch.hub.list("facebookresearch/xcit:main"):
@@ -412,7 +412,7 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
             next_frames = [im.cuda(non_blocking=True) for im in next_frames]
 
         num_all_student_views = args.local_crops_number + args.num_student_views
-        if args.mask_ratio <= 0.0: mask_ratio = None
+        mask_ratio = None if args.mask_ratio <= 0.0 else args.mask_ratio
         # teacher and student forward passes + compute dino loss
         with torch.cuda.amp.autocast(fp16_scaler is not None):
             teacher_output = teacher(next_frames[:args.num_teacher_views])  # only the first global view is passed to the teacher

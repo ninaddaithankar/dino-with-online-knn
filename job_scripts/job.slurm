@@ -15,9 +15,9 @@
 #SBATCH --gpus-per-node=2
 
 ### LOG INFO ###
-#SBATCH --job-name=TDV_STYLE_no_mask_no_crops_only_ssv2_k_1024
-#SBATCH --output=logs/slurm/dino_recipe/TDV_STYLE_no_mask_no_crops_only_ssv2_k_1024%A-%a%A-%a.log
-export RUN_NAME="TDV_STYLE_no_mask_no_crops_only_ssv2_k_1024"
+#SBATCH --job-name=MASKED_TDV_STYLE_no_crops_only_ssv2_k_1024_mask_ratio_0.5
+#SBATCH --output=logs/slurm/dino_recipe/MASKED_TDV_STYLE_no_crops_only_ssv2_k_1024_mask_ratio_0.5%A-%a%A-%a.log
+export RUN_NAME="MASKED_TDV_STYLE_no_crops_only_ssv2_k_1024_mask_ratio_0.5"
 
 OUTPUT_BASE="/shared/nas2/ninadd2/repos/dino-recipe/output"
 OUTPUT_DIR="${OUTPUT_BASE}/${RUN_NAME}_${SLURM_JOB_ID}"
@@ -29,13 +29,13 @@ module purge
 
 NUM_GPUS=2
 
-CUDA_VISIBLE_DEVICES=6,7 torchrun --master_port=29513 --nproc_per_node=${NUM_GPUS} main_dino.py \
+CUDA_VISIBLE_DEVICES=2,3 torchrun --master_port=29513 --nproc_per_node=${NUM_GPUS} main_dino.py \
 --run_name ${RUN_NAME} \
 --project_name dino_recipe \
 --local_crops_number 0 \
 --num_teacher_views 1 \
 --num_student_views 2 \
---mask_ratio 0.0 \
+--mask_ratio 0.5 \
 --arch vit_base \
 --batch_size_per_gpu 8 \
 --epochs 100 \
