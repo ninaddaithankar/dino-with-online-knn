@@ -128,6 +128,8 @@ def get_args_parser():
     parser.add_argument('--minimal_augmentation', type=utils.bool_flag, default=False, help="""Whether to use minimal augmentation
         (only random resized crop and normalization) for the global views. Useful for debugging or
         to disable color-based augmentations when working with grayscale images.""")
+    parser.add_argument('--num_student_views', default=2, type=int, help="Number of views fed to student.")
+    parser.add_argument('--num_teacher_views', default=2, type=int, help="Number of views fed to teacher.")
     parser.add_argument('--mask_ratio', default=0.0, type=float, help="Proportion of the visible patches in the input.")
 
     # Misc
@@ -279,11 +281,12 @@ def train_dino(args):
     # ============ preparing loss ... ============
     dino_loss = DINOLoss(
         args.out_dim,
-        args.local_crops_number + 2,  # total number of crops = 2 global crops + local_crops_number
+        args.local_crops_number + args.num_student_views,  # total number of crops = 2 global crops + local_crops_number
         args.warmup_teacher_temp,
         args.teacher_temp,
         args.warmup_teacher_temp_epochs,
         args.epochs,
+        args.num_teacher_views,
     ).cuda()
 
     # ============ preparing optimizer ... ============
@@ -407,10 +410,12 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
             prev_frames = [im.cuda(non_blocking=True) for im in prev_frames]
             next_frames = [im.cuda(non_blocking=True) for im in next_frames]
 
+        num_all_student_views = args.local_crops_number + args.num_student_views
+        if args.mask_ratio <= 0.0: mask_ratio = None
         # teacher and student forward passes + compute dino loss
         with torch.cuda.amp.autocast(fp16_scaler is not None):
-            teacher_output = teacher(next_frames[0])  # only the 2 global views pass through the teacher
-            student_output = student(prev_frames[0], args.mask_ratio)
+            teacher_output = teacher(next_frames[:args.num_teacher_views])  # only the first global view is passed to the teacher
+            student_output = student(prev_frames[:num_all_student_views], mask_ratio) # student sees all available view
             loss = dino_loss(student_output, teacher_output, epoch)
 
             if acc_grad_steps > 1:
@@ -478,7 +483,7 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
 
 class DINOLoss(nn.Module):
     def __init__(self, out_dim, ncrops, warmup_teacher_temp, teacher_temp,
-                 warmup_teacher_temp_epochs, nepochs, student_temp=0.1,
+                 warmup_teacher_temp_epochs, nepochs, num_teacher_views=2,student_temp=0.1,
                  center_momentum=0.9):
         super().__init__()
         self.student_temp = student_temp
@@ -492,6 +497,7 @@ class DINOLoss(nn.Module):
                         teacher_temp, warmup_teacher_temp_epochs),
             np.ones(nepochs - warmup_teacher_temp_epochs) * teacher_temp
         ))
+        self.num_teacher_views = num_teacher_views  # we only apply the loss to the 2 global views
 
     def forward(self, student_output, teacher_output, epoch):
         """
@@ -503,7 +509,7 @@ class DINOLoss(nn.Module):
         # teacher centering and sharpening
         temp = self.teacher_temp_schedule[epoch]
         teacher_out = F.softmax((teacher_output - self.center) / temp, dim=-1)
-        teacher_out = teacher_out.detach().chunk(2)
+        teacher_out = teacher_out.detach().chunk(self.num_teacher_views)
 
         total_loss = 0
         n_loss_terms = 0
@@ -588,7 +594,7 @@ class DataAugmentationDINO(object):
 
     def __call__(self, image):
         if self.use_minimal:
-            return [self.global_transfo1(image)]
+            return [self.global_transfo1(image), self.global_transfo2(image)]
         
         crops = []
         crops.append(self.global_transfo1(image))
