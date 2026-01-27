@@ -135,7 +135,7 @@ class VisionTransformer(nn.Module):
     """ Vision Transformer """
     def __init__(self, img_size=[224], patch_size=16, in_chans=3, num_classes=0, embed_dim=768, depth=12,
                  num_heads=12, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop_rate=0., attn_drop_rate=0.,
-                 drop_path_rate=0., norm_layer=nn.LayerNorm, **kwargs):
+                 drop_path_rate=0., use_masking=False, norm_layer=nn.LayerNorm, **kwargs):
         super().__init__()
         self.num_features = self.embed_dim = embed_dim
 
@@ -143,6 +143,8 @@ class VisionTransformer(nn.Module):
             img_size=img_size[0], patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
         num_patches = self.patch_embed.num_patches
 
+        if use_masking:
+            self.mask_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
         self.pos_drop = nn.Dropout(p=drop_rate)
@@ -192,10 +194,42 @@ class VisionTransformer(nn.Module):
         assert int(w0) == patch_pos_embed.shape[-2] and int(h0) == patch_pos_embed.shape[-1]
         patch_pos_embed = patch_pos_embed.permute(0, 2, 3, 1).view(1, -1, dim)
         return torch.cat((class_pos_embed.unsqueeze(0), patch_pos_embed), dim=1)
+    
+    def create_mask(self, x, mask_ratio):
+        """
+        Create random mask for patch tokens.
+        Args:
+            x: all tokens of shape (B, num_patches, embed_dim)
+            mask_ratio: ratio of patches to mask
+        Returns:
+            masks: boolean tensor of shape (B, num_patches) where True indicates a position to mask
+        """
+        B, N, _ = x.shape
+        
+        assert 0.0 <= mask_ratio < 1.0, "mask_ratio must be in [0, 1)"
 
-    def prepare_tokens(self, x):
+        num_tokens_to_keep = int(N * (1 - mask_ratio))
+
+        noise = torch.rand(B, N, device=x.device)  # noise in [0, 1]
+        ids_shuffle = torch.argsort(noise, dim=1)  # ascend: small is keep, large is remove
+        ids_restore = torch.argsort(ids_shuffle, dim=1)
+
+        mask = torch.ones((B, N), device=x.device)
+        mask[:, :num_tokens_to_keep] = 0
+
+        # unshuffle to get the binary mask
+        mask = torch.gather(mask, dim=1, index=ids_restore).bool()
+
+        return mask
+
+    def prepare_tokens(self, x, mask_ratio=None):
         B, nc, w, h = x.shape
         x = self.patch_embed(x)  # patch linear embedding
+        
+        # create and apply mask if mask ratio is provided
+        if mask_ratio is not None:
+            masks = self.create_mask(x, mask_ratio)
+            x = torch.where(masks.unsqueeze(-1), self.mask_token.to(x.dtype), x)
 
         # add the [CLS] token to the embed patch tokens
         cls_tokens = self.cls_token.expand(B, -1, -1)
@@ -206,8 +240,8 @@ class VisionTransformer(nn.Module):
 
         return self.pos_drop(x)
 
-    def forward(self, x):
-        x = self.prepare_tokens(x)
+    def forward(self, x, mask_ratio=None):
+        x = self.prepare_tokens(x, mask_ratio=mask_ratio)
         for blk in self.blocks:
             x = blk(x)
         x = self.norm(x)
