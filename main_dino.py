@@ -403,20 +403,25 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
                     param_group["weight_decay"] = wd_schedule[it]
 
         # flatten time dim if video and move images to gpu
-        prev_frames, next_frames = images
-        if prev_frames[0].dim() == 5:  # for video inputs
-            prev_frames = [im.flatten(0, 1).cuda(non_blocking=True) for im in prev_frames]
-            next_frames = [im.flatten(0, 1).cuda(non_blocking=True) for im in next_frames]
+        # prev_frames, next_frames = images
+        # if prev_frames[0].dim() == 5:  # for video inputs
+        #     prev_frames = [im.flatten(0, 1).cuda(non_blocking=True) for im in prev_frames]
+        #     next_frames = [im.flatten(0, 1).cuda(non_blocking=True) for im in next_frames]
+        # else:
+        #     prev_frames = [im.cuda(non_blocking=True) for im in prev_frames]
+        #     next_frames = [im.cuda(non_blocking=True) for im in next_frames]
+
+        if images[0].dim() == 5:  # for video inputs
+            images = [im.flatten(0, 1).cuda(non_blocking=True) for im in images]
         else:
-            prev_frames = [im.cuda(non_blocking=True) for im in prev_frames]
-            next_frames = [im.cuda(non_blocking=True) for im in next_frames]
+            images = [im.cuda(non_blocking=True) for im in images]
 
         num_all_student_views = args.local_crops_number + args.num_student_views
         mask_ratio = None if args.mask_ratio <= 0.0 else args.mask_ratio
         # teacher and student forward passes + compute dino loss
         with torch.cuda.amp.autocast(fp16_scaler is not None):
-            teacher_output = teacher(next_frames[:args.num_teacher_views])  # only the first global view is passed to the teacher
-            student_output = student(prev_frames[:num_all_student_views], mask_ratio) # student sees all available view
+            teacher_output = teacher(images[:args.num_teacher_views])  # only the first global view is passed to the teacher
+            student_output = student(images[:num_all_student_views], mask_ratio) # student sees all available view
             loss = dino_loss(student_output, teacher_output, epoch)
 
             if acc_grad_steps > 1:
