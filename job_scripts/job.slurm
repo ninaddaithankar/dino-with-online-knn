@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --account=bdta-dtai-gh
+#SBATCH --account=beex-dtai-gh
 #SBATCH --partition=ghx4
 ### NODE/CPU/MEM/GPU  ###
 #SBATCH --mem-bind=verbose,local
@@ -15,9 +15,9 @@
 #SBATCH --gpus-per-node=2
 
 ### LOG INFO ###
-#SBATCH --job-name=PBE_GRID_MASKED_no_augs_only_ssv2_k_1024_mask_ratio_0.50
-#SBATCH --output=logs/slurm/dino_recipe/PBE_GRID_MASKED_no_augs_only_ssv2_k_1024_mask_ratio_0.50%A-%a%A-%a.log
-export RUN_NAME="PBE_GRID_MASKED_no_augs_only_ssv2_k_1024_mask_ratio_0.50"
+#SBATCH --job-name=PBE_GRID_MASKED_no_augs_only_ssv2_k_1024_mask_ratio_0.75
+#SBATCH --output=logs/slurm/dino_recipe/PBE_GRID_MASKED_no_augs_only_ssv2_k_1024_mask_ratio_0.75%A-%a%A-%a.log
+export RUN_NAME="PBE_GRID_MASKED_no_augs_only_ssv2_k_1024_mask_ratio_0.75"
 
 OUTPUT_BASE="/shared/nas2/ninadd2/repos/dino-recipe/output"
 OUTPUT_DIR="${OUTPUT_BASE}/${RUN_NAME}_${SLURM_JOB_ID}"
@@ -25,18 +25,18 @@ mkdir -p "$OUTPUT_DIR"
 
 mkdir -p logs/slurm/dino_recipe/
 module purge
-# ulimit -n 65535
+ulimit -n 65535
 
 NUM_GPUS=2
 
-CUDA_VISIBLE_DEVICES=4,5 torchrun --master_port=29513 --nproc_per_node=${NUM_GPUS} main_dino.py \
+CUDA_VISIBLE_DEVICES=2,3 torchrun --master_port=29514 --nproc_per_node=${NUM_GPUS} main_dino.py \
 --run_name ${RUN_NAME} \
 --project_name dino_recipe \
 --local_crops_number 0 \
 --minimal_augmentation True \
 --num_teacher_views 1 \
 --num_student_views 2 \
---mask_ratio 0.50 \
+--mask_ratio 0.75 \
 --arch vit_base \
 --batch_size_per_gpu 8 \
 --epochs 100 \
