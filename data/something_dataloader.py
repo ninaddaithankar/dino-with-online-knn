@@ -163,13 +163,16 @@ class SomethingDataset(Dataset):
             frame_idx_list = self.get_frame_indices(video_length, total_frames)
             crops = self.capture_video_frames(video_path, self.num_frames, frame_idx_list)
 
-            prev_crops = crops[:-1]
-            next_crops = crops[1:]
+            # prev_crops = crops[:-1]
+            # next_crops = crops[1:]
 
-            prev_frames = [torch.stack(same_crops) for same_crops in zip(*prev_crops)]
-            next_frames = [torch.stack(same_crops) for same_crops in zip(*next_crops)]
+            # prev_frames = [torch.stack(same_crops) for same_crops in zip(*prev_crops)]
+            # next_frames = [torch.stack(same_crops) for same_crops in zip(*next_crops)]
 
-            return (prev_frames, next_frames), "dummy"
+            # return (prev_frames, next_frames), "dummy"
+
+            frames = [torch.stack(same_crops) for same_crops in zip(*crops)]
+            return frames, "dummy"
         
             
         except Exception as exception:
