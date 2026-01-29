@@ -33,7 +33,7 @@ NUM_GPUS=2
 
 torchrun --nproc_per_node=${NUM_GPUS} main_dino.py \
 --run_name ${RUN_NAME}${mask_ratio[$SLURM_ARRAY_TASK_ID]} \
---project_name dino_recipe \
+--project_name philosophical_backing_experiment \
 --local_crops_number 0 \
 --minimal_augmentation True \
 --num_teacher_views 1 \
