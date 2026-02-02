@@ -564,7 +564,15 @@ class DataAugmentationDINO(object):
             minimal = transforms.Compose([
                 # transforms.RandomResizedCrop(224, scale=global_crops_scale, interpolation=Image.BICUBIC),
                 # transforms.CenterCrop(224),
+
                 transforms.Resize((224, 224)),
+                transforms.RandomApply(
+                    [transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)],
+                    p=0.8
+                ),
+                transforms.RandomGrayscale(p=0.2),
+                utils.GaussianBlur(1.0),
+                
                 normalize,
             ])
             self.global_transfo1 = minimal
