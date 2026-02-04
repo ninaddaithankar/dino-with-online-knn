@@ -16,14 +16,14 @@
 
 ### LOG INFO ###
 #SBATCH --job-name=INI1k_10pct_MASKED_jitter+blur_imagenet_k_1024_mask_ratio_
-#SBATCH --output=logs/slurm/dino_recipe/INI1k_10pct_MASKED_jitter+blur_imagenet_k_1024_mask_ratio_%A-%a%A-%a.log
+#SBATCH --output=logs/slurm/philosophical_backing_experiment/INI1k_10pct_MASKED_jitter+blur_imagenet_k_1024_mask_ratio_%A-%a%A-%a.log
 export RUN_NAME="INI1k_10pct_MASKED_jitter+blur_imagenet_k_1024_mask_ratio_"
 
-OUTPUT_BASE="/shared/nas2/ninadd2/repos/dino-recipe/output"
+OUTPUT_BASE="/work/hdd/bcsi/ndaithankar/playground/dino/output"
 OUTPUT_DIR="${OUTPUT_BASE}/${RUN_NAME}_${SLURM_JOB_ID}"
 mkdir -p "$OUTPUT_DIR"
 
-mkdir -p logs/slurm/dino_recipe/
+mkdir -p logs/slurm/philosophical_backing_experiment/
 module purge
 # ulimit -n 65535
 
