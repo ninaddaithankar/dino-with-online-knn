@@ -9,14 +9,16 @@ from tqdm import tqdm
 #NOTE: if you are having issues with this dataloader and perms you need to add your HF token
 #see these links - https://discuss.huggingface.co/t/imagenet-1k-is-not-available-in-huggingface-dataset-hub/25040 https://huggingface.co/docs/hub/security-tokens
 class ImageNetDataset(Dataset):
-    def __init__(self, hparams, split, transform, dataset_dir=None, n_samples_per_class=-1):
+    def __init__(self, hparams, split, transform, dataset_dir=None, n_samples_per_class=-1, non_random_filtering=True):
         self.transform = transform
         split = 'validation' if split in ["valid", "val", "validate"] else split
         self.ds = load_dataset("imagenet-1k", split=split)
 
         # -- select n samples per class to reduce dataset size as needed
         self.n_samples_per_class = n_samples_per_class
-        if n_samples_per_class > 0:
+        if n_samples_per_class > 0 and non_random_filtering:
+            self.ds = self._deterministic_filter_by_samples_per_class(self.ds, n_samples_per_class)
+        elif n_samples_per_class > 0:
             self.ds = self._filter_by_samples_per_class(self.ds, n_samples_per_class)
 
     def __len__(self):
@@ -46,6 +48,34 @@ class ImageNetDataset(Dataset):
                 selected_indices.extend(np.random.choice(label_indices, samples_per_class, replace=False))
             else:
                 selected_indices.extend(label_indices)
+
+        return dataset.select(selected_indices)
+    
+    def _deterministic_filter_by_samples_per_class(self, dataset, samples_per_class, seed: int = 786, keep_original_order: bool = True):
+        print(f"Filtering ImageNet dataset to contain {samples_per_class} samples per class. seed={seed}")
+
+        rng = np.random.default_rng(seed)
+
+        labels = np.asarray(dataset["label"])
+        selected_indices = []
+
+        for label in tqdm(np.unique(labels), desc="Filtering dataset"):  # np.unique is deterministic (sorted)
+            label_indices = np.flatnonzero(labels == label)
+            label_indices.sort()  # make deterministic even if upstream changes representation
+
+            if len(label_indices) > samples_per_class:
+                chosen = rng.choice(label_indices, size=samples_per_class, replace=False)
+                chosen.sort()  # deterministic ordering within class
+                selected_indices.extend(chosen.tolist())
+            else:
+                selected_indices.extend(label_indices.tolist())
+
+        if keep_original_order:
+            # ensures resulting dataset order matches original dataset order
+            selected_indices.sort()
+
+        print(f"Selected {len(selected_indices)} samples out of {len(dataset)}")
+        print(f"initial indices: {selected_indices[:10]} ... {selected_indices[-10:]}")
 
         return dataset.select(selected_indices)
 

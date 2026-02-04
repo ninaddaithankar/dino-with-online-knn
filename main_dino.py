@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import argparse
+from functools import partial
 import os
 import sys
 import datetime
@@ -143,6 +144,8 @@ def get_args_parser():
         distributed training; see https://pytorch.org/docs/stable/distributed.html""")
     parser.add_argument("--local-rank", default=0, type=int, help="Please ignore and do not set this argument.")
 
+    parser.add_argument("--imagenet_samples_per_class", default=-1, type=int, help="Number of samples per class for imagenet. -1 uses all samples.")
+    parser.add_argument("--non_random_filtering", default=True, type=utils.bool_flag, help="Whether to use non-random filtering for imagenet samples.")
     parser.add_argument("--context_length", default=16, type=int, help="Number of frames in the input clip.")
     parser.add_argument("--temporal_diff", default=0.25, type=float, help="Time difference between sampled frames in seconds.")
     parser.add_argument("--knn_freq", default=1, type=int, help="run knn evaluation every n epochs.")
@@ -191,7 +194,7 @@ def train_dino(args):
     data_paths = [p.strip() for p in args.data_paths.split(',')]
 
     dataset_classes = {
-        'imagenet': ImageNetDataset,
+        'imagenet': partial(ImageNetDataset, n_samples_per_class=args.imagenet_samples_per_class, non_random_filtering=args.non_random_filtering),
         'imagenet-video': ImageNetSequentialClips,
         'ego4d': Ego4DTasksDataset,
         'ssv2': SomethingDataset,
@@ -566,13 +569,14 @@ class DataAugmentationDINO(object):
                 # transforms.CenterCrop(224),
 
                 transforms.Resize((224, 224)),
+                transforms.RandomHorizontalFlip(p=0.5),
                 transforms.RandomApply(
                     [transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)],
                     p=0.8
                 ),
                 transforms.RandomGrayscale(p=0.2),
                 utils.GaussianBlur(1.0),
-                
+
                 normalize,
             ])
             self.global_transfo1 = minimal
