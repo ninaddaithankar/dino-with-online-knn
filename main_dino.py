@@ -132,6 +132,7 @@ def get_args_parser():
     parser.add_argument('--num_student_views', default=2, type=int, help="Number of views fed to student.")
     parser.add_argument('--num_teacher_views', default=2, type=int, help="Number of views fed to teacher.")
     parser.add_argument('--mask_ratio', default=0.0, type=float, help="Proportion of the visible patches in the input.")
+    parser.add_argument('--image_dim', default=224, type=int, help="Image dimension.")
 
     # Misc
     parser.add_argument('--datasets', default='ssv2', type=str, help='Comma separated list of datasets to train on.')
@@ -172,7 +173,8 @@ def train_dino(args):
         args.global_crops_scale,
         args.local_crops_scale,
         args.local_crops_number,
-        use_minimal=args.minimal_augmentation
+        use_minimal=args.minimal_augmentation,
+        args.image_dim,
     )
 
     hparams = SimpleNamespace(**{
@@ -212,6 +214,23 @@ def train_dino(args):
     
     dataset = torch.utils.data.ConcatDataset(datasets)
     print(f"Total aggregate dataset has {len(dataset)} items.")
+
+    img_size = args.image_dim
+    patch_size = args.patch_size
+    n_tokens = (img_size // patch_size) ** 2
+    mask_generator = MaskingGenerator(
+        input_size=(img_size // patch_size, img_size // patch_size),
+        max_num_patches=0.5 * img_size // patch_size * img_size // patch_size,
+    )
+
+    collate_fn = partial(
+        utils.collate_data_and_cast,
+        mask_ratio_tuple=args.ibot.mask_ratio_min_max,
+        mask_probability=args.ibot.mask_sample_probability,
+        n_tokens=args.n_tokens,
+        mask_generator=mask_generator,
+        dtype=inputs_dtype,
+    )
 
     sampler = torch.utils.data.DistributedSampler(dataset, shuffle=True)
     data_loader = torch.utils.data.DataLoader(
@@ -371,8 +390,8 @@ def train_dino(args):
         if fp16_scaler is not None:
             save_dict['fp16_scaler'] = fp16_scaler.state_dict()
         utils.save_on_master(save_dict, os.path.join(args.output_dir, 'checkpoint.pth'))
-        if args.saveckp_freq and epoch % args.saveckp_freq == 0:
-            utils.save_on_master(save_dict, os.path.join(args.output_dir, f'checkpoint{epoch:04}.pth'))
+        # if args.saveckp_freq and epoch % args.saveckp_freq == 0:
+        #     utils.save_on_master(save_dict, os.path.join(args.output_dir, f'checkpoint{epoch:04}.pth'))
         log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
                      'epoch': epoch}
         if utils.is_main_process():
@@ -548,7 +567,7 @@ class DINOLoss(nn.Module):
 
 
 class DataAugmentationDINO(object):
-    def __init__(self, global_crops_scale, local_crops_scale, local_crops_number, use_minimal=False):
+    def __init__(self, global_crops_scale, local_crops_scale, local_crops_number, use_minimal=False, image_dim=224):
         flip_and_color_jitter = transforms.Compose([
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomApply(
@@ -568,7 +587,7 @@ class DataAugmentationDINO(object):
                 # transforms.RandomResizedCrop(224, scale=global_crops_scale, interpolation=Image.BICUBIC),
                 # transforms.CenterCrop(224),
 
-                transforms.Resize((224, 224)),
+                transforms.Resize((image_dim, image_dim)),
                 transforms.RandomHorizontalFlip(p=0.5),
                 transforms.RandomApply(
                     [transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)],
@@ -588,14 +607,14 @@ class DataAugmentationDINO(object):
         else:
             # first global crop
             self.global_transfo1 = transforms.Compose([
-                transforms.RandomResizedCrop(224, scale=global_crops_scale, interpolation=Image.BICUBIC),
+                transforms.RandomResizedCrop(image_dim, scale=global_crops_scale, interpolation=Image.BICUBIC),
                 flip_and_color_jitter,
                 utils.GaussianBlur(1.0),
                 normalize,
             ])
             # second global crop
             self.global_transfo2 = transforms.Compose([
-                transforms.RandomResizedCrop(224, scale=global_crops_scale, interpolation=Image.BICUBIC),
+                transforms.RandomResizedCrop(image_dim, scale=global_crops_scale, interpolation=Image.BICUBIC),
                 flip_and_color_jitter,
                 utils.GaussianBlur(0.1),
                 utils.Solarization(0.2),
