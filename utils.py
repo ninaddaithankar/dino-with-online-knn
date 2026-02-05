@@ -607,7 +607,7 @@ class MultiCropWrapper(nn.Module):
         self.backbone = backbone
         self.head = head
 
-    def forward(self, x, mask_ratio=None):
+    def forward(self, x, mask_ratio=None, masks=None):
         # convert to list
         if not isinstance(x, list):
             x = [x]
@@ -617,7 +617,7 @@ class MultiCropWrapper(nn.Module):
         )[1], 0)
         start_idx, output = 0, torch.empty(0).to(x[0].device)
         for end_idx in idx_crops:
-            _out = self.backbone(torch.cat(x[start_idx: end_idx]), mask_ratio)
+            _out = self.backbone(torch.cat(x[start_idx: end_idx]), mask_ratio, masks)
             # The output is a tuple with XCiT model. See:
             # https://github.com/facebookresearch/xcit/blob/master/xcit.py#L404-L405
             if isinstance(_out, tuple):
@@ -887,7 +887,12 @@ def collate_data_and_cast(samples_list, mask_ratio_tuple, mask_probability, dtyp
 
     collated_global_crops = torch.stack([s[0]["global_crops"][i] for i in range(n_global_crops) for s in samples_list])
 
-    collated_local_crops = torch.stack([s[0]["local_crops"][i] for i in range(n_local_crops) for s in samples_list])
+    if n_local_crops > 0:
+        collated_local_crops = torch.stack(
+            [s[0]["local_crops"][i] for i in range(n_local_crops) for s in samples_list]
+        )
+    else:
+        collated_local_crops = torch.empty(0)  # or None
 
     B = len(collated_global_crops)
     N = n_tokens
