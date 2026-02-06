@@ -133,6 +133,9 @@ def get_args_parser():
     parser.add_argument('--num_teacher_views', default=2, type=int, help="Number of views fed to teacher.")
     parser.add_argument('--mask_ratio', default=0.0, type=float, help="Proportion of the visible patches in the input.")
     parser.add_argument('--use_ibot_masking', default=False, type=utils.bool_flag, help="Whether to use iBOT style masking (different masks for student and teacher).")
+    parser.add_argument('--ibot_mask_ratio_min_max', default=(0.7, 0.75), type=float, nargs=2, help="Min and max proportion of visible patches for iBOT style masking.")
+    parser.add_argument('--ibot_mask_sample_probability', default=1.0, type=float, help="Probability of applying iBOT style masking to a sample.")
+    
     parser.add_argument('--image_dim', default=224, type=int, help="Image dimension.")
 
     # Misc
@@ -230,8 +233,8 @@ def train_dino(args):
         inputs_dtype = torch.float16 if args.use_fp16 else torch.float32
         collate_fn = partial(
             utils.collate_data_and_cast,
-            mask_ratio_tuple=args.ibot.mask_ratio_min_max,
-            mask_probability=args.ibot.mask_sample_probability,
+            mask_ratio_tuple=args.ibot_mask_ratio_min_max,
+            mask_probability=args.ibot_mask_sample_probability,
             n_tokens=n_tokens,
             mask_generator=mask_generator,
             dtype=inputs_dtype,
