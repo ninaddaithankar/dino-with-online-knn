@@ -174,7 +174,6 @@ def train_dino(args):
         args.local_crops_scale,
         args.local_crops_number,
         use_minimal=args.minimal_augmentation,
-        args.image_dim,
     )
 
     hparams = SimpleNamespace(**{
@@ -215,22 +214,6 @@ def train_dino(args):
     dataset = torch.utils.data.ConcatDataset(datasets)
     print(f"Total aggregate dataset has {len(dataset)} items.")
 
-    img_size = args.image_dim
-    patch_size = args.patch_size
-    n_tokens = (img_size // patch_size) ** 2
-    mask_generator = MaskingGenerator(
-        input_size=(img_size // patch_size, img_size // patch_size),
-        max_num_patches=0.5 * img_size // patch_size * img_size // patch_size,
-    )
-
-    collate_fn = partial(
-        utils.collate_data_and_cast,
-        mask_ratio_tuple=args.ibot.mask_ratio_min_max,
-        mask_probability=args.ibot.mask_sample_probability,
-        n_tokens=args.n_tokens,
-        mask_generator=mask_generator,
-        dtype=inputs_dtype,
-    )
 
     sampler = torch.utils.data.DistributedSampler(dataset, shuffle=True)
     data_loader = torch.utils.data.DataLoader(
