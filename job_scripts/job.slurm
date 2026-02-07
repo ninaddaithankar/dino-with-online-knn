@@ -29,15 +29,16 @@ ulimit -n 65535
 
 NUM_GPUS=2
 
-CUDA_VISIBLE_DEVICES=4,5 torchrun --master_port=29791 --nproc_per_node=${NUM_GPUS} main_dino.py \
+CUDA_VISIBLE_DEVICES=2,3 torchrun --master_port=29792 --nproc_per_node=${NUM_GPUS} main_dino.py \
 --run_name ${RUN_NAME} \
---project_name philosophical_backing_experiment \
+--project_name debug \
 --local_crops_number 0 \
 --minimal_augmentation True \
 --num_teacher_views 1 \
 --num_student_views 2 \
---imagenet_samples_per_class 128 \
---mask_ratio 0.6 \
+--imagenet_samples_per_class 12 \
+--mask_ratio 0.8 \
+--use_ibot_masking True \
 --arch vit_base \
 --batch_size_per_gpu 128 \
 --epochs 1000 \

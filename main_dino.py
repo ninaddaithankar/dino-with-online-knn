@@ -132,6 +132,10 @@ def get_args_parser():
     parser.add_argument('--num_student_views', default=2, type=int, help="Number of views fed to student.")
     parser.add_argument('--num_teacher_views', default=2, type=int, help="Number of views fed to teacher.")
     parser.add_argument('--mask_ratio', default=0.0, type=float, help="Proportion of the visible patches in the input.")
+    parser.add_argument('--use_ibot_masking', default=False, type=utils.bool_flag, help="Whether to use iBOT style masking (different masks for student and teacher).")
+    parser.add_argument('--ibot_mask_ratio_min_max', default=(0.7, 0.75), type=float, nargs=2, help="Min and max proportion of visible patches for iBOT style masking.")
+    parser.add_argument('--ibot_mask_sample_probability', default=1.0, type=float, help="Probability of applying iBOT style masking to a sample.")
+    
     parser.add_argument('--image_dim', default=224, type=int, help="Image dimension.")
 
     # Misc
@@ -174,6 +178,8 @@ def train_dino(args):
         args.local_crops_scale,
         args.local_crops_number,
         use_minimal=args.minimal_augmentation,
+        image_dim=args.image_dim,
+        return_dict=args.use_ibot_masking,
     )
 
     hparams = SimpleNamespace(**{
@@ -214,6 +220,25 @@ def train_dino(args):
     dataset = torch.utils.data.ConcatDataset(datasets)
     print(f"Total aggregate dataset has {len(dataset)} items.")
 
+    collate_fn = None
+    if args.use_ibot_masking:
+        img_size = args.image_dim
+        patch_size = args.patch_size
+        n_tokens = (img_size // patch_size) ** 2
+        mask_generator = utils.MaskingGenerator(
+            input_size=(img_size // patch_size, img_size // patch_size),
+            max_num_patches=0.5 * img_size // patch_size * img_size // patch_size,
+        )
+
+        inputs_dtype = torch.float16 if args.use_fp16 else torch.float32
+        collate_fn = partial(
+            utils.collate_data_and_cast,
+            mask_ratio_tuple=args.ibot_mask_ratio_min_max,
+            mask_probability=args.ibot_mask_sample_probability,
+            n_tokens=n_tokens,
+            mask_generator=mask_generator,
+            dtype=inputs_dtype,
+        )
 
     sampler = torch.utils.data.DistributedSampler(dataset, shuffle=True)
     data_loader = torch.utils.data.DataLoader(
@@ -223,6 +248,7 @@ def train_dino(args):
         num_workers=args.num_workers,
         pin_memory=True,
         drop_last=True,
+        collate_fn=collate_fn,
     )
     print(f"Data loaded: there are {len(dataset)} images.")
 
@@ -236,7 +262,7 @@ def train_dino(args):
             drop_path_rate=args.drop_path_rate,  # stochastic depth
             use_masking=(args.mask_ratio > 0.0),
         )
-        teacher = vits.__dict__[args.arch](patch_size=args.patch_size, use_masking=(args.mask_ratio > 0.0))
+        teacher = vits.__dict__[args.arch](patch_size=args.patch_size, use_masking=(args.mask_ratio > 0.0 or args.use_ibot_masking))
         embed_dim = student.embed_dim
     # if the network is a XCiT
     elif args.arch in torch.hub.list("facebookresearch/xcit:main"):
@@ -397,7 +423,7 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Epoch: [{}/{}]'.format(epoch, args.epochs)
     
-    for it, (images, _) in enumerate(metric_logger.log_every(data_loader, 10, header)):
+    for it, batch in enumerate(metric_logger.log_every(data_loader, 10, header)):
         # update weight decay and learning rate according to their schedule
         it = len(data_loader) * epoch + it  # global training iteration
 
@@ -416,18 +442,46 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
         #     prev_frames = [im.cuda(non_blocking=True) for im in prev_frames]
         #     next_frames = [im.cuda(non_blocking=True) for im in next_frames]
 
-        if images[0].dim() == 5:  # for video inputs
-            images = [im.flatten(0, 1).cuda(non_blocking=True) for im in images]
+        masks, mask_indices_list, masks_weight, n_masked_patches = None, None, None, None
+        if isinstance(batch, dict):
+            # new collate output
+            global_crops = batch["collated_global_crops"].cuda(non_blocking=True)
+            local_crops  = batch["collated_local_crops"].cuda(non_blocking=True) if batch["collated_local_crops"].numel() > 0 else None
+
+            masks             = batch["collated_masks"].cuda(non_blocking=True)          # (G*B, N) bool
+            mask_indices_list = batch["mask_indices_list"].cuda(non_blocking=True)       # (total_masked,)
+            masks_weight      = batch["masks_weight"].cuda(non_blocking=True)            # (total_masked,)
+            n_masked_patches  = batch["n_masked_patches"].cuda(non_blocking=True)        # (1,)
+
+            B_img = global_crops.shape[0] // args.num_student_views   # if args.num_student_views == G
+            G = args.num_student_views
+
+            # reshape to (G, B_img, C, H, W) then split into list length G
+            global_views = global_crops.view(G, B_img, *global_crops.shape[1:])  # (G,B,C,H,W)
+            images = [global_views[i] for i in range(G)]
+
+            # local crops: assume L == args.local_crops_number
+            if args.local_crops_number > 0 and local_crops is not None:
+                L = args.local_crops_number
+                local_views = local_crops.view(L, B_img, *local_crops.shape[1:])  # (L,B,C,h,w)
+                images += [local_views[i] for i in range(L)]
         else:
-            images = [im.cuda(non_blocking=True) for im in images]
+            images, _ = batch
+            if images[0].dim() == 5:  # for video inputs
+                images = [im.flatten(0, 1).cuda(non_blocking=True) for im in images]
+            else:
+                images = [im.cuda(non_blocking=True) for im in images]
 
         num_all_student_views = args.local_crops_number + args.num_student_views
-        mask_ratio = None if args.mask_ratio <= 0.0 else args.mask_ratio
+        mask_ratio = None if (args.use_ibot_masking or args.mask_ratio <= 0.0) else args.mask_ratio
+
         # teacher and student forward passes + compute dino loss
         with torch.cuda.amp.autocast(fp16_scaler is not None):
             teacher_output = teacher(images[:args.num_teacher_views])  # only the first global view is passed to the teacher
-            student_output = student(images[:num_all_student_views], mask_ratio) # student sees all available view
+            student_output = student(images[:num_all_student_views], mask_ratio, masks) # student sees all available view
+            
             loss = dino_loss(student_output, teacher_output, epoch)
+            # loss += args.ibot_weight * ibot_loss(student_output, teacher_output, mask_indices_list, masks_weight, n_masked_patches, epoch)
 
             if acc_grad_steps > 1:
                 loss = loss / acc_grad_steps
@@ -550,7 +604,8 @@ class DINOLoss(nn.Module):
 
 
 class DataAugmentationDINO(object):
-    def __init__(self, global_crops_scale, local_crops_scale, local_crops_number, use_minimal=False, image_dim=224):
+    def __init__(self, global_crops_scale, local_crops_scale, local_crops_number, use_minimal=False, image_dim=224, return_dict=False):
+        self.return_dict = return_dict
         flip_and_color_jitter = transforms.Compose([
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomApply(
@@ -613,15 +668,18 @@ class DataAugmentationDINO(object):
             ])
 
     def __call__(self, image):
+        output = {}
+        output["local_crops"] = []
+
         if self.use_minimal:
-            return [self.global_transfo1(image), self.global_transfo2(image)]
-        
-        crops = []
-        crops.append(self.global_transfo1(image))
-        crops.append(self.global_transfo2(image))
-        for _ in range(self.local_crops_number):
-            crops.append(self.local_transfo(image))
-        return crops
+            output["global_crops"] = [self.global_transfo1(image), self.global_transfo2(image)]
+        else:
+            output["global_crops"] = [self.global_transfo1(image), self.global_transfo2(image)]
+            output["local_crops"] = []
+            for _ in range(self.local_crops_number):
+                output["local_crops"].append(self.local_transfo(image))
+
+        return output if self.return_dict else (output["global_crops"] + output["local_crops"])
 
 
 if __name__ == '__main__':
