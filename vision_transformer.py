@@ -222,13 +222,16 @@ class VisionTransformer(nn.Module):
 
         return mask
 
-    def prepare_tokens(self, x, mask_ratio=None):
+    def prepare_tokens(self, x, mask_ratio=None, masks=None):
         B, nc, w, h = x.shape
         x = self.patch_embed(x)  # patch linear embedding
         
         # create and apply mask if mask ratio is provided
-        if mask_ratio is not None:
+        if mask_ratio is not None and masks is None:
+            # mae style masking
             masks = self.create_mask(x, mask_ratio)
+
+        if masks is not None:
             x = torch.where(masks.unsqueeze(-1), self.mask_token.to(x.dtype), x)
 
         # add the [CLS] token to the embed patch tokens
@@ -240,8 +243,8 @@ class VisionTransformer(nn.Module):
 
         return self.pos_drop(x)
 
-    def forward(self, x, mask_ratio=None):
-        x = self.prepare_tokens(x, mask_ratio=mask_ratio)
+    def forward(self, x, mask_ratio=None, masks=None):
+        x = self.prepare_tokens(x, mask_ratio=mask_ratio, masks=masks)
         for blk in self.blocks:
             x = blk(x)
         x = self.norm(x)
