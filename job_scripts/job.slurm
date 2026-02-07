@@ -4,8 +4,7 @@
 #SBATCH --partition=ghx4
 ### NODE/CPU/MEM/GPU  ###
 #SBATCH --mem-bind=verbose,local
-#SBATCH --gpu-bind=verbose,closest
-#SBATCH --mem=0
+#SBATCH --mem-per-gpu=118G
 #SBATCH --cpus-per-gpu=72
 
 ### ADDITIONAL RUN INFO ###
@@ -33,10 +32,10 @@ CUDA_VISIBLE_DEVICES=6,7 torchrun --master_port=29792 --nproc_per_node=${NUM_GPU
 --run_name ${RUN_NAME} \
 --project_name philosophical_backing_experiment \
 --local_crops_number 0 \
---minimal_augmentation True \
---num_teacher_views 1 \
+--minimal_augmentation False \
+--num_teacher_views 2 \
 --num_student_views 2 \
---imagenet_samples_per_class 128 \
+--imagenet_samples_per_class 360 \
 --mask_ratio 0.8 \
 --use_ibot_masking True \
 --ibot_mask_ratio_min_max 0.5 0.51 \

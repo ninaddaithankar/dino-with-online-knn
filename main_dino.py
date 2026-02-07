@@ -675,7 +675,6 @@ class DataAugmentationDINO(object):
             output["global_crops"] = [self.global_transfo1(image), self.global_transfo2(image)]
         else:
             output["global_crops"] = [self.global_transfo1(image), self.global_transfo2(image)]
-            output["local_crops"] = []
             for _ in range(self.local_crops_number):
                 output["local_crops"].append(self.local_transfo(image))
 
