@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --account=bcsi-dtai-gh
+#SBATCH --account=beig-dtai-gh
 #SBATCH --partition=ghx4
 ### NODE/CPU/MEM/GPU  ###
 #SBATCH --mem-bind=verbose,local
@@ -8,8 +8,8 @@
 #SBATCH --cpus-per-gpu=72
 
 ### ADDITIONAL RUN INFO ###
-#SBATCH --array=0-3
-#SBATCH --time=36:00:00
+#SBATCH --array=0-2
+#SBATCH --time=48:00:00
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=2
 
@@ -28,8 +28,8 @@ mkdir -p logs/slurm/philosophical_backing_experiment/
 module purge
 # ulimit -n 65535
 
-mask_ratio=(0.2 0.5 0.7 0.9)
-mask_ratio_high=(0.21 0.51 0.71 0.91)
+mask_ratio=(0.1 0.3 0.4)
+mask_ratio_high=(0.11 0.31 0.41)
 
 NUM_GPUS=2
 torchrun --nproc_per_node=${NUM_GPUS} --master_port ${MASTER_PORT} main_dino.py \
