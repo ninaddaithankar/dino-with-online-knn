@@ -205,7 +205,7 @@ class ReturnIndexDataset(ImageNetDataset):
         return img, idx
 
 
-def evaluate_knn(args, encoder=None):
+def evaluate_knn(args, step=0, encoder=None):
     if not dist.is_initialized():
         utils.init_distributed_mode(args)
 

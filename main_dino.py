@@ -382,12 +382,13 @@ def train_dino(args):
             epoch, fp16_scaler, acc_grad_steps, args)
         
         # ============ logging ... ============
+        end_step = (epoch + 1) * len(data_loader) - 1
         if utils.is_main_process():
             # log scalar metrics
-            wandb.log({f"train/{k}_epoch": v for k, v in train_stats.items()})
+            wandb.log({f"train/{k}_epoch": v for k, v in train_stats.items()}, step=end_step)
 
         if (epoch % knn_freq == 0) or (epoch == args.epochs - 1):
-            evaluate_knn(get_args(defaults=True), teacher_without_ddp.backbone) 
+            evaluate_knn(get_args(defaults=True), step=end_step, encoder=teacher_without_ddp.backbone) 
 
         # ============ writing logs ... ============
         save_dict = {
@@ -539,7 +540,8 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
                     "train/wd": optimizer.param_groups[0]["weight_decay"],
                     "train/momentum": momentum_schedule[it],
                     "train/global_step": it,
-                }
+                },
+                step=it,
             )
 
     # gather the stats from all processes
