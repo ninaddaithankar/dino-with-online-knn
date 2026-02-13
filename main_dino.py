@@ -156,6 +156,8 @@ def get_args_parser():
     parser.add_argument("--temporal_diff", default=0.25, type=float, help="Time difference between sampled frames in seconds.")
     parser.add_argument("--knn_freq", default=1, type=int, help="run knn evaluation every n epochs.")
     parser.add_argument("--run_name", required=True, type=str, help="Name of run on wandb.")
+    parser.add_argument("--wandb_run_id", default=None, type=str, help="Wandb run id for resuming.")
+    parser.add_argument("--wandb_resume", default="allow", type=str, help="Wandb resume mode (allow, must, never).")
     parser.add_argument("--project_name", default="dino_recipe", type=str, help="Wandb project name.")
 
     return parser
@@ -166,7 +168,7 @@ def train_dino(args):
 
     # init wandb
     if utils.is_main_process():
-        wandb.init(project=args.project_name, name=args.run_name, config=vars(args))
+        wandb.init(project=args.project_name, id=args.wandb_run_id, resume=args.wandb_resume, name=args.run_name, config=vars(args))
 
     utils.fix_random_seeds(args.seed)
     print("git:\n  {}\n".format(utils.get_sha()))
@@ -370,6 +372,7 @@ def train_dino(args):
             dino_loss=dino_loss,
         )
         start_epoch = to_restore["epoch"]
+        print(f"Resuming training from {args.checkpoint_pth} from epoch {start_epoch}.")
 
     start_time = time.time()
     print("Starting DINO training !")
@@ -416,7 +419,6 @@ def train_dino(args):
 
     if utils.is_main_process():
         wandb.finish()
-
 
 
 def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loader,
