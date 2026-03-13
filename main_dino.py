@@ -142,6 +142,7 @@ def get_args_parser():
     parser.add_argument('--datasets', default='ssv2', type=str, help='Comma separated list of datasets to train on.')
     parser.add_argument('--data_paths', default='/path/to/imagenet/train/', type=str, help='Please specify path to the training data.')
     parser.add_argument('--output_dir', default=".", type=str, help='Path to save logs and checkpoints.')
+    parser.add_argument('--checkpoint_pth', default=None, type=str, help='Path to checkpoint to resume training from.')
     parser.add_argument('--saveckp_freq', default=1, type=int, help='Save checkpoint every x epochs.')
     parser.add_argument('--resume', default=False, type=utils.bool_flag, help='Resume training from checkpoint.pth in output_dir.')
     parser.add_argument('--seed', default=0, type=int, help='Random seed.')
@@ -156,6 +157,8 @@ def get_args_parser():
     parser.add_argument("--temporal_diff", default=0.25, type=float, help="Time difference between sampled frames in seconds.")
     parser.add_argument("--knn_freq", default=1, type=int, help="run knn evaluation every n epochs.")
     parser.add_argument("--run_name", required=True, type=str, help="Name of run on wandb.")
+    parser.add_argument("--wandb_run_id", default=None, type=str, help="Wandb run id for resuming.")
+    parser.add_argument("--wandb_resume", default="allow", type=str, help="Wandb resume mode (allow, must, never).")
     parser.add_argument("--project_name", default="dino_recipe", type=str, help="Wandb project name.")
 
     return parser
@@ -166,7 +169,7 @@ def train_dino(args):
 
     # init wandb
     if utils.is_main_process():
-        wandb.init(project=args.project_name, name=args.run_name, config=vars(args))
+        wandb.init(project=args.project_name, id=args.wandb_run_id, resume=args.wandb_resume, name=args.run_name, config=vars(args))
 
     utils.fix_random_seeds(args.seed)
     print("git:\n  {}\n".format(utils.get_sha()))
@@ -382,12 +385,13 @@ def train_dino(args):
             epoch, fp16_scaler, acc_grad_steps, args)
         
         # ============ logging ... ============
+        end_step = (epoch + 1) * len(data_loader) - 1
         if utils.is_main_process():
             # log scalar metrics
-            wandb.log({f"train/{k}_epoch": v for k, v in train_stats.items()})
+            wandb.log({f"train/{k}_epoch": v for k, v in train_stats.items()}, step=end_step)
 
         if (epoch % knn_freq == 0) or (epoch == args.epochs - 1):
-            evaluate_knn(get_args(defaults=True), teacher_without_ddp.backbone) 
+            evaluate_knn(get_args(defaults=True), step=end_step, encoder=teacher_without_ddp.backbone) 
 
         # ============ writing logs ... ============
         save_dict = {
@@ -415,7 +419,6 @@ def train_dino(args):
 
     if utils.is_main_process():
         wandb.finish()
-
 
 
 def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loader,
@@ -539,7 +542,8 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
                     "train/wd": optimizer.param_groups[0]["weight_decay"],
                     "train/momentum": momentum_schedule[it],
                     "train/global_step": it,
-                }
+                },
+                step=it,
             )
 
     # gather the stats from all processes

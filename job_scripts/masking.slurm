@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --account=bcsi-dtai-gh
+#SBATCH --account=bfdx-dtai-gh
 #SBATCH --partition=ghx4
 ### NODE/CPU/MEM/GPU  ###
 #SBATCH --mem-bind=verbose,local
@@ -8,8 +8,8 @@
 #SBATCH --cpus-per-gpu=72
 
 ### ADDITIONAL RUN INFO ###
-#SBATCH --array=0-3
-#SBATCH --time=36:00:00
+#SBATCH --array=0
+#SBATCH --time=48:00:00
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=2
 
@@ -20,7 +20,6 @@ export RUN_NAME="IBOT_INI1k_100pct_MASKED_all_aug_no_local_crop_imagenet_k_1024_
 export MASTER_PORT=$((20000 + ($SLURM_JOB_ID % 20000))) # To avoid port conflicts in case of multiple jobs
 
 OUTPUT_BASE="/work/hdd/bcsi/ndaithankar/playground/dino/output"
-OUTPUT_DIR="${OUTPUT_BASE}/${RUN_NAME}_${SLURM_JOB_ID}"
 
 mkdir -p "$OUTPUT_DIR"
 
@@ -28,12 +27,18 @@ mkdir -p logs/slurm/philosophical_backing_experiment/
 module purge
 # ulimit -n 65535
 
-mask_ratio=(0.2 0.5 0.7 0.9)
-mask_ratio_high=(0.21 0.51 0.71 0.91)
+mask_ratio=(0.1 0.2 0.3 0.4 0.5)
+mask_ratio_high=(0.11 0.21 0.31 0.41 0.51)
+run_id=("mcmuqokl" "ym9s11a8" "w88rerbk" "g4yms4ka" "ia3gtea5")
+
+OUTPUT_DIR="${OUTPUT_BASE}/${RUN_NAME}${mask_ratio[$SLURM_ARRAY_TASK_ID]}_${SLURM_JOB_ID}"
+CHECKPOINT_DIR="${OUTPUT_BASE}/${RUN_NAME}${mask_ratio[$SLURM_ARRAY_TASK_ID]}"
 
 NUM_GPUS=2
+
 torchrun --nproc_per_node=${NUM_GPUS} --master_port ${MASTER_PORT} main_dino.py \
 --run_name ${RUN_NAME}${mask_ratio[$SLURM_ARRAY_TASK_ID]} \
+--wandb_run_id ${run_id[$SLURM_ARRAY_TASK_ID]} \
 --project_name philosophical_backing_experiment \
 --local_crops_number 0 \
 --minimal_augmentation False \
@@ -51,3 +56,5 @@ torchrun --nproc_per_node=${NUM_GPUS} --master_port ${MASTER_PORT} main_dino.py 
 --datasets "imagenet" \
 --data_paths "/work/hdd/bcsi/ndaithankar/datasets/imagenet-1k-hf, /shared/nas2/ninadd2/datasets/ssv2, /shared/nas/data/m1/shared-resource/ego4d/moment_clips, /work/hdd/beex/ndaithankar/datasets/ego4d/processed_fullscale, /work/hdd/bcsi/ndaithankar/datasets/new-kinetics/k400"  \
 --output_dir "${OUTPUT_DIR}" \
+--checkpoint_pth "${CHECKPOINT_DIR}/checkpoint.pth" \
+
