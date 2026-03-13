@@ -143,6 +143,7 @@ def get_args_parser():
     parser.add_argument('--data_paths', default='/path/to/imagenet/train/', type=str, help='Please specify path to the training data.')
     parser.add_argument('--output_dir', default=".", type=str, help='Path to save logs and checkpoints.')
     parser.add_argument('--saveckp_freq', default=1, type=int, help='Save checkpoint every x epochs.')
+    parser.add_argument('--resume', default=False, type=utils.bool_flag, help='Resume training from checkpoint.pth in output_dir.')
     parser.add_argument('--seed', default=0, type=int, help='Random seed.')
     parser.add_argument('--num_workers', default=6, type=int, help='Number of data loading workers per GPU.')
     parser.add_argument("--dist_url", default="env://", type=str, help="""url used to set up
@@ -357,17 +358,18 @@ def train_dino(args):
     knn_freq = args.knn_freq if hasattr(args, 'knn_freq') else 1
     acc_grad_steps = args.acc_grad_steps
 
-    # to_restore = {"epoch": 0}
-    # utils.restart_from_checkpoint(
-    #     os.path.join(args.output_dir, "checkpoint.pth"),
-    #     run_variables=to_restore,
-    #     student=student,
-    #     teacher=teacher,
-    #     optimizer=optimizer,
-    #     fp16_scaler=fp16_scaler,
-    #     dino_loss=dino_loss,
-    # )
-    # start_epoch = to_restore["epoch"]
+    if args.resume:
+        to_restore = {"epoch": 0}
+        utils.restart_from_checkpoint(
+            os.path.join(args.output_dir, "checkpoint.pth"),
+            run_variables=to_restore,
+            student=student,
+            teacher=teacher,
+            optimizer=optimizer,
+            fp16_scaler=fp16_scaler,
+            dino_loss=dino_loss,
+        )
+        start_epoch = to_restore["epoch"]
 
     start_time = time.time()
     print("Starting DINO training !")

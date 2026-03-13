@@ -14,12 +14,12 @@
 #SBATCH --gpus-per-node=2
 
 ### LOG INFO ###
-#SBATCH --job-name=IBOT_INI1k_0.1pct_MASKED_all_aug_no_local_crop_imagenet_k_1024_mask_ratio_0
-#SBATCH --output=logs/slurm/dino_recipe/IBOT_INI1k_0.1pct_MASKED_all_aug_no_local_crop_imagenet_k_1024_mask_ratio_0%A-%a%A-%a.log
-export RUN_NAME="IBOT_INI1k_0.1pct_MASKED_all_aug_no_local_crop_imagenet_k_1024_mask_ratio_0"
+#SBATCH --job-name=FULL_AUG_dino_ssv2_only
+#SBATCH --output=logs/slurm/dino_recipe/FULL_AUG_dino_ssv2_only%A-%a%A-%a.log
+export RUN_NAME="FULL_AUG_dino_ssv2_only"
 
 OUTPUT_BASE="/shared/nas2/ninadd2/repos/dino-recipe/output"
-OUTPUT_DIR="${OUTPUT_BASE}/${RUN_NAME}_${SLURM_JOB_ID}"
+OUTPUT_DIR="${OUTPUT_BASE}/${RUN_NAME}_"
 mkdir -p "$OUTPUT_DIR"
 
 # mkdir -p logs/slurm/dino_recipe/
@@ -30,21 +30,14 @@ NUM_GPUS=2
 
 CUDA_VISIBLE_DEVICES=2,3 torchrun --master_port=29792 --nproc_per_node=${NUM_GPUS} main_dino.py \
 --run_name ${RUN_NAME} \
---project_name philosophical_backing_experiment \
---local_crops_number 0 \
+--project_name dino_recipe \
 --minimal_augmentation False \
---num_teacher_views 2 \
---num_student_views 2 \
---imagenet_samples_per_class 1 \
---mask_ratio 0 \
 --use_ibot_masking False \
---ibot_mask_ratio_min_max 0.5 0.51 \
---ibot_mask_sample_probability 1.0 \
 --arch vit_base \
---batch_size_per_gpu 128 \
---epochs 100000 \
---knn_freq 1000 \
+--batch_size_per_gpu 8 \
+--epochs 100 \
 --out_dim 1024 \
---datasets "imagenet" \
+--datasets "ssv2" \
 --data_paths "/shared/nas2/ninadd2/datasets/ssv2, /shared/nas/data/m1/shared-resource/ego4d/moment_clips, /work/hdd/bcsi/ndaithankar/datasets/imagenet-1k-hf, /work/hdd/beex/ndaithankar/datasets/ego4d/processed_fullscale, /work/hdd/bcsi/ndaithankar/datasets/new-kinetics/k400"  \
 --output_dir "${OUTPUT_DIR}" \
+--resume True \
