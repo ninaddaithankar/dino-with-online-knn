@@ -142,7 +142,6 @@ def get_args_parser():
     parser.add_argument('--datasets', default='ssv2', type=str, help='Comma separated list of datasets to train on.')
     parser.add_argument('--data_paths', default='/path/to/imagenet/train/', type=str, help='Please specify path to the training data.')
     parser.add_argument('--output_dir', default=".", type=str, help='Path to save logs and checkpoints.')
-    parser.add_argument('--checkpoint_pth', default=None, type=str, help='Path to checkpoint to resume training from.')
     parser.add_argument('--saveckp_freq', default=1, type=int, help='Save checkpoint every x epochs.')
     parser.add_argument('--resume', default=False, type=utils.bool_flag, help='Resume training from checkpoint.pth in output_dir.')
     parser.add_argument('--seed', default=0, type=int, help='Random seed.')
