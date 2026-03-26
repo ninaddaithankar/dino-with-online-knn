@@ -17,6 +17,7 @@ Misc functions.
 Mostly copy-paste from torchvision references or other public repos like DETR:
 https://github.com/facebookresearch/detr/blob/master/util/misc.py
 """
+import argparse
 import os
 import sys
 import time
@@ -25,10 +26,11 @@ import random
 import datetime
 import subprocess
 from collections import defaultdict, deque
+import warnings
 
 import numpy as np
 import torch
-from torch import nn
+from torch import Tensor, nn
 import torch.distributed as dist
 from PIL import ImageFilter, ImageOps
 

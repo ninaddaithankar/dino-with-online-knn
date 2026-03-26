@@ -8,7 +8,7 @@
 #SBATCH --cpus-per-gpu=72
 
 ### ADDITIONAL RUN INFO ###
-#SBATCH --array=0
+#SBATCH --array=1-4
 #SBATCH --time=48:00:00
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=2
@@ -53,8 +53,8 @@ torchrun --nproc_per_node=${NUM_GPUS} --master_port ${MASTER_PORT} main_dino.py 
 --epochs 100 \
 --knn_freq 1 \
 --out_dim 1024 \
---datasets "imagenet" \
---data_paths "/work/hdd/bcsi/ndaithankar/datasets/imagenet-1k-hf, /shared/nas2/ninadd2/datasets/ssv2, /shared/nas/data/m1/shared-resource/ego4d/moment_clips, /work/hdd/beex/ndaithankar/datasets/ego4d/processed_fullscale, /work/hdd/bcsi/ndaithankar/datasets/new-kinetics/k400"  \
+--datasets "ssv2" \
+--data_paths "/shared/nas2/ninadd2/datasets/ssv2, /work/hdd/bcsi/ndaithankar/datasets/imagenet-1k-hf, /shared/nas/data/m1/shared-resource/ego4d/moment_clips, /work/hdd/beex/ndaithankar/datasets/ego4d/processed_fullscale, /work/hdd/bcsi/ndaithankar/datasets/new-kinetics/k400"  \
 --output_dir "${OUTPUT_DIR}" \
 --checkpoint_pth "${CHECKPOINT_DIR}/checkpoint.pth" \
 
