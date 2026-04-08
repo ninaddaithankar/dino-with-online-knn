@@ -28,12 +28,13 @@ ulimit -n 65535
 
 NUM_GPUS=2
 
-CUDA_VISIBLE_DEVICES=0,1 torchrun --master_port=29792 --nproc_per_node=${NUM_GPUS} main_dino.py \
+CUDA_VISIBLE_DEVICES=0,1 torchrun --master_port=29992 --nproc_per_node=${NUM_GPUS} main_dino.py \
 --run_name ${RUN_NAME} \
 --project_name dino_recipe \
 --minimal_augmentation False \
 --use_ibot_masking False \
---arch vit_base \
+--arch vit_small \
+--norm_last_layer False \
 --batch_size_per_gpu 8 \
 --epochs 100 \
 --out_dim 1024 \
