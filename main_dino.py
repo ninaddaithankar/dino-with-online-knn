@@ -152,6 +152,7 @@ def get_args_parser():
 
     parser.add_argument("--imagenet_samples_per_class", default=-1, type=int, help="Number of samples per class for imagenet. -1 uses all samples.")
     parser.add_argument("--non_random_filtering", default=True, type=utils.bool_flag, help="Whether to use non-random filtering for imagenet samples.")
+    parser.add_argument("--data_pct", default=1.0, type=float, help="Fraction of each dataset to train on (0, 1]. Subset is chosen deterministically.")
     parser.add_argument("--context_length", default=16, type=int, help="Number of frames in the input clip.")
     parser.add_argument("--temporal_diff", default=0.25, type=float, help="Time difference between sampled frames in seconds.")
     parser.add_argument("--knn_freq", default=1, type=int, help="run knn evaluation every n epochs.")
@@ -217,6 +218,13 @@ def train_dino(args):
             raise ValueError(f"Unknown dataset: {ds_name}. Skipping...")
         else:
             ds = dataset_class(hparams, "train", dataset_dir=data_path, transform=transform)
+            if args.data_pct < 1.0:
+                n_total = len(ds)
+                n_keep = max(1, int(round(args.data_pct * n_total)))
+                rng = np.random.default_rng(args.seed)
+                indices = np.sort(rng.choice(n_total, size=n_keep, replace=False)).tolist()
+                ds = torch.utils.data.Subset(ds, indices)
+                print(f"Subset {ds_name} to {n_keep}/{n_total} samples ({args.data_pct*100:.1f}%)")
             datasets.append(ds)
             print(f"Loaded {ds_name} with {len(ds)} items.")
     
