@@ -1,7 +1,7 @@
 #!/bin/bash
 
-#SBATCH --account=beex-dtai-gh
-#SBATCH --partition=ghx4
+#SBATCH --account=YOUR_ACCOUNT
+#SBATCH --partition=YOUR_PARTITION
 ### NODE/CPU/MEM/GPU  ###
 #SBATCH --mem-bind=verbose,local
 #SBATCH --mem-per-gpu=118G
@@ -14,23 +14,26 @@
 #SBATCH --gpus-per-node=2
 
 ### LOG INFO ###
-#SBATCH --job-name=IBOT_INI1k_0.1pct_MASKED_all_aug_no_local_crop_imagenet_k_1024_mask_ratio_0
-#SBATCH --output=logs/slurm/dino_recipe/IBOT_INI1k_0.1pct_MASKED_all_aug_no_local_crop_imagenet_k_1024_mask_ratio_0%A-%a%A-%a.log
-export RUN_NAME="IBOT_INI1k_0.1pct_MASKED_all_aug_no_local_crop_imagenet_k_1024_mask_ratio_0"
+#SBATCH --job-name=dino_training
+#SBATCH --output=logs/slurm/dino/%x_%A-%a.log
 
-OUTPUT_BASE="/shared/nas2/ninadd2/repos/dino-recipe/output"
+export RUN_NAME="dino_training"
+
+OUTPUT_BASE="./output"  # set to your output directory
 OUTPUT_DIR="${OUTPUT_BASE}/${RUN_NAME}_${SLURM_JOB_ID}"
 mkdir -p "$OUTPUT_DIR"
 
-# mkdir -p logs/slurm/dino_recipe/
 module purge
 ulimit -n 65535
 
 NUM_GPUS=2
 
-CUDA_VISIBLE_DEVICES=2,3 torchrun --master_port=29792 --nproc_per_node=${NUM_GPUS} main_dino.py \
+# Set your dataset paths below. Unused entries can be left as empty strings.
+DATA_PATHS="/path/to/ssv2, /path/to/imagenet"  # comma-separated list
+
+CUDA_VISIBLE_DEVICES=0,1 torchrun --master_port=29792 --nproc_per_node=${NUM_GPUS} main_dino.py \
 --run_name ${RUN_NAME} \
---project_name philosophical_backing_experiment \
+--project_name dino_training \
 --local_crops_number 0 \
 --minimal_augmentation False \
 --num_teacher_views 2 \
@@ -42,9 +45,9 @@ CUDA_VISIBLE_DEVICES=2,3 torchrun --master_port=29792 --nproc_per_node=${NUM_GPU
 --ibot_mask_sample_probability 1.0 \
 --arch vit_base \
 --batch_size_per_gpu 128 \
---epochs 100000 \
+--epochs 100 \
 --knn_freq 1000 \
 --out_dim 1024 \
 --datasets "imagenet" \
---data_paths "/shared/nas2/ninadd2/datasets/ssv2, /shared/nas/data/m1/shared-resource/ego4d/moment_clips, /work/hdd/bcsi/ndaithankar/datasets/imagenet-1k-hf, /work/hdd/beex/ndaithankar/datasets/ego4d/processed_fullscale, /work/hdd/bcsi/ndaithankar/datasets/new-kinetics/k400"  \
+--data_paths "${DATA_PATHS}" \
 --output_dir "${OUTPUT_DIR}" \

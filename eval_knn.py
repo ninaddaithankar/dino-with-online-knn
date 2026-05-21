@@ -279,7 +279,7 @@ def get_args(defaults=False):
     parser.add_argument("--dist_url", default="env://", type=str, help="""url used to set up
         distributed training; see https://pytorch.org/docs/stable/distributed.html""")
     parser.add_argument("--local-rank", default=0, type=int, help="Please ignore and do not set this argument.")
-    parser.add_argument('--data_path', default='/work/hdd/bcsi/ndaithankar/datasets/imagenet-1k-hf', type=str)
+    parser.add_argument('--data_path', default='/path/to/imagenet', type=str)
     parser.add_argument("--run_name", default="", type=str, help="Name of run on wandb.")
     parser.add_argument("--project_name", default="", type=str, help="Name of project on wandb.")
     parser.add_argument('--train_samples_per_class', default=-1, type=int,

@@ -1,7 +1,7 @@
 #!/bin/bash
 
-#SBATCH --account=beex-dtai-gh
-#SBATCH --partition=ghx4
+#SBATCH --account=YOUR_ACCOUNT
+#SBATCH --partition=YOUR_PARTITION
 ### NODE/CPU/MEM/GPU  ###
 #SBATCH --mem-bind=verbose,local
 #SBATCH --gpu-bind=verbose,closest
@@ -15,13 +15,16 @@
 #SBATCH --gpus-per-node=4
 
 ### LOG INFO ###
-#SBATCH --job-name=CLS_DINO_ssv2+imagenet
-#SBATCH --output=logs/slurm/ini1k_eval/CLS_DINO_ssv2+imagenet%A-%a%A-%a.log
-export RUN_NAME="CLS_USING_DINO_CODE_DINO_ssv2+imagenet"
+#SBATCH --job-name=knn_eval
+#SBATCH --output=logs/slurm/ini1k_eval/%x_%A-%a.log
+
+export RUN_NAME="knn_eval"
 
 mkdir -p logs/slurm/ini1k_eval/
 module purge
 ulimit -n 65535
+
+PRETRAINED_WEIGHTS="/path/to/checkpoint.pth"  # set to your checkpoint
 
 torchrun --nproc_per_node=2 eval_knn.py \
 --run_name ${RUN_NAME} \
@@ -30,4 +33,4 @@ torchrun --nproc_per_node=2 eval_knn.py \
 --batch_size_per_gpu 128 \
 --train_samples_per_class -1 \
 --val_samples_per_class -1 \
---pretrained_weights "/work/hdd/bcsi/ndaithankar/playground/dino/output/FULL_INI1K_dino_ssv2+imagenet_k_1024_1387349/checkpoint0015.pth"\
+--pretrained_weights "${PRETRAINED_WEIGHTS}"
